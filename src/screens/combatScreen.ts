@@ -53,7 +53,15 @@ export function renderCombat(root: HTMLElement) {
       ? `<div class="intent intent-attack" title="It intends to attack.">⚔ ${move.value}</div>`
       : `<div class="intent intent-block" title="It intends to defend.">🛡 ${move.value}</div>`;
 
-  const handHtml = c.hand.map((card) => renderCard(card.defId, card.uid, 'c-play', junkDesc(card))).join('');
+  // fanned hand, per the concept battle layout: tilted, overlapping, arced
+  const n = c.hand.length;
+  const handHtml = c.hand
+    .map((card, i) => {
+      const off = i - (n - 1) / 2;
+      return `<div class="fan" style="--tilt:${(off * 2.4).toFixed(1)}deg;--lift:${(off * off * 1.6).toFixed(1)}px">
+        ${renderCard(card.defId, card.uid, 'c-play', junkDesc(card))}</div>`;
+    })
+    .join('');
 
   root.innerHTML = `
     <header class="topbar">
@@ -63,19 +71,21 @@ export function renderCombat(root: HTMLElement) {
     </header>
     <main class="combat-main">
       <div class="battlefield">
+        <img class="battle-bg" src="art/${dest?.art ?? 'dest_woods'}.png" alt=""/>
         <div class="combatant" id="player-box">
-          ${art('hero', 'art-xl')}
-          ${side ? `<div class="side-mini" title="${side.name}">${art(side.art, 'art-sm')}</div>` : ''}
-          ${exp?.mule ? `<div class="side-mini mule-mini" title="Pack Mule (cowering)">${art('mule', 'art-sm')}</div>` : ''}
-          <div class="combatant-label">You</div>
           ${hpBar(G.hp, G.maxHp, c.playerBlock)}
+          <div class="duo">
+            ${exp?.mule ? `<span class="mule-back" title="Pack Mule (cowering)">${art('mule', 'art-md')}</span>` : ''}
+            ${art('hero', 'art-xl')}
+            ${side ? `<span class="companion" title="${side.name}">${art(side.art, 'art-md')}</span>` : ''}
+          </div>
+          <div class="combatant-label">You${side ? ` &amp; ${side.name}` : ''}</div>
         </div>
-        <div class="vs">${c.over ? '✦' : 'vs'}</div>
         <div class="combatant ${c.over ? 'enemy-dead' : ''}" id="enemy-box">
           ${intentHtml}
+          ${hpBar(c.enemyHp, c.enemyMaxHp, c.enemyBlock)}
           ${art(enemy.art, 'art-xl')}
           <div class="combatant-label">${enemy.name}</div>
-          ${hpBar(c.enemyHp, c.enemyMaxHp, c.enemyBlock)}
         </div>
       </div>
       ${c.over ? '<div class="victory">Victory!</div>' : ''}

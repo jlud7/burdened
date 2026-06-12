@@ -112,10 +112,11 @@ export function renderCard(defId: string, uid?: number, action?: string, descOve
   const def = CARDS[defId];
   const act = action && uid != null ? `data-action="${action}" data-arg="${uid}" data-card-uid="${uid}"` : '';
   const cost = def.unplayable ? '✕' : String(def.cost);
+  // per the concept cards: art window on top, gem cost overlapping it, ribbon name banner
   return `<div class="card card-${def.type}" ${act}>
-    <div class="card-cost">${cost}</div>
-    <div class="card-name">${def.name}</div>
+    <div class="card-cost"><span>${cost}</span></div>
     <div class="card-art">${art(def.art)}</div>
+    <div class="card-name">${def.name}</div>
     <div class="card-desc">${descOverride ?? def.desc}</div>
   </div>`;
 }

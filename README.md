@@ -32,11 +32,15 @@ The complete core loop from the GDD:
 - **Soft-fail extraction** — die and you lose everything you carried, but the village (and your gear) endures.
 - **Meta-progression** — bank gold/wood/stone, build the Blacksmith, Apothecary and Watchtower to unlock better gear and longer days. Saved in localStorage.
 
-### Not yet (roadmap)
+### Not yet (roadmap — see [docs/gdd-v2.md](docs/gdd-v2.md))
 
+- **Active Burden cards** — loot you can play in desperation (throw the coins, hide behind the chest) at the cost of its extraction value
+- **The Dog familiar** — a permanent companion providing the 1/3 utility deck, upgraded at the Kennel
+- **Badges as class modifiers** — Devout / Marksman / Apprentice transform your basic cards instead of adding new ones
+- Status effects (Poison, Rooted, Corrosion, Sticky, Bleed…) and the debuff-heavy Frog & Snail factions
+- Aging consumables (Apple → Spoiled, Bread → Moldy) and transforming ones (Meat → Sharp Bone)
 - Village **Raid** events (3-wave tower defense with Town Cards) and building ruin/repair
-- True tetromino shapes in the grid
-- Multi-enemy fights, more destinations, more events, audio
+- Multi-enemy fights, branching hex world map, true tetromino shapes, audio
 
 ## Art pipeline
 

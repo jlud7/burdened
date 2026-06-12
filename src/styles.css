@@ -224,28 +224,48 @@ button.deck-pill:hover { border-color: var(--ink-soft); }
 /* ---------- combat ---------- */
 
 .combat-main { display: flex; flex-direction: column; gap: 10px; }
-.battlefield {
-  display: flex; align-items: flex-end; justify-content: space-around; gap: 16px;
-  padding: 26px 12px 18px; min-height: 270px;
-  background: linear-gradient(#00000000 60%, #00000014); border-radius: 14px;
-}
-.combatant { position: relative; text-align: center; width: 230px; }
-.combatant-label { font-weight: bold; margin: 6px 0 4px; }
-.combatant .art-xl { filter: drop-shadow(0 6px 0 #00000022); }
-.enemy-dead .art-xl { transform: rotate(80deg) translateY(14px); opacity: 0.4; transition: all 0.5s ease; }
-.vs { font-size: 22px; font-style: italic; color: var(--ink-soft); padding-bottom: 90px; }
 
-.side-mini { position: absolute; left: 6px; bottom: 64px; }
-.mule-mini { left: auto; right: 6px; opacity: 0.85; }
+/* the battlefield is a scene, per the concept battle layout: combatants stand
+   on the ground in the destination itself, HP floating above their heads */
+.battlefield {
+  position: relative; overflow: hidden;
+  display: flex; align-items: flex-end; justify-content: space-around; gap: 16px;
+  padding: 22px 12px 30px; min-height: 290px;
+  background: linear-gradient(#c8cdb4 0%, #d9cba6 55%, #c9b78d 100%);
+  border: 2.5px solid var(--ink); border-radius: 14px; box-shadow: 4px 4px 0 #0000002a;
+}
+.battle-bg {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  opacity: 0.5; filter: blur(1.5px) saturate(0.85);
+}
+.battlefield::after { /* ground strip */
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 58px;
+  background: linear-gradient(#00000000, #5a47301f 30%, #5a473042);
+}
+body.phase-night .battlefield { background: linear-gradient(#3a3f50 0%, #4a4e5e 60%, #3c3526 100%); }
+body.phase-night .battle-bg { opacity: 0.4; filter: blur(1.5px) brightness(0.55) saturate(0.55); }
+body.phase-night .combatant-label, body.phase-night .battlefield .block-chip { color: #d8d0bc; }
+
+.combatant { position: relative; z-index: 1; text-align: center; width: 240px; }
+.combatant-label { font-weight: bold; margin: 4px 0 0; text-shadow: 0 1px 0 #ffffff55; }
+.combatant .hp-wrap { margin-bottom: 8px; }
+.combatant .hp-bar { max-width: 150px; height: 15px; background: #00000055; }
+.combatant .art-xl { filter: drop-shadow(0 10px 7px #00000040); }
+.enemy-dead .art-xl { transform: rotate(80deg) translateY(14px); opacity: 0.4; transition: all 0.5s ease; }
+
+.duo { display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
+.art-md { width: 76px; height: 76px; }
+.companion .art-md, .mule-back .art-md { filter: drop-shadow(0 7px 5px #00000038); }
+.mule-back { opacity: 0.8; margin-right: -10px; }
 
 .intent {
-  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
-  padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 15px;
+  display: inline-block; margin-bottom: 4px;
+  padding: 3px 12px; border-radius: 20px; font-weight: bold; font-size: 15px;
   border: 2px solid var(--ink); background: var(--panel); animation: bob 1.6s ease-in-out infinite;
 }
 .intent-attack { background: #a04b3b; color: #f3ead2; }
 .intent-block { background: var(--blue); color: #f3ead2; }
-@keyframes bob { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-5px); } }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 
 .victory { text-align: center; font-size: 26px; font-weight: bold; letter-spacing: 3px; animation: pop-in 0.3s ease; }
 
@@ -265,7 +285,9 @@ button.deck-pill:hover { border-color: var(--ink-soft); }
   border: 3px solid var(--ink); display: flex; align-items: center; justify-content: center;
   font-weight: bold; font-size: 17px; box-shadow: 2px 3px 0 #00000033;
 }
-.hand { display: flex; gap: 8px; flex: 1; justify-content: center; flex-wrap: wrap; min-height: 170px; align-items: center; }
+.hand { display: flex; flex: 1; justify-content: center; flex-wrap: wrap; min-height: 195px; align-items: flex-end; padding: 14px 0 26px; }
+.fan { position: relative; transform: rotate(var(--tilt, 0deg)) translateY(var(--lift, 0px)); transition: transform 0.12s ease; margin: 0 -13px; }
+.fan:hover { z-index: 6; transform: rotate(0deg) translateY(calc(var(--lift, 0px) - 8px)); }
 .hand-side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .pile-btn { font-family: inherit; font-size: 13px; cursor: pointer; background: #00000010; color: var(--ink); border: 2px solid var(--ink-soft); border-radius: var(--radius); padding: 4px 10px; }
 .pile-list { background: var(--panel); border: 2px solid var(--ink); }
@@ -283,14 +305,26 @@ button.deck-pill:hover { border-color: var(--ink-soft); }
 .card-skill { background: #dde2cd; }
 .card-junk { background: #c9c2b4; color: #00000088; cursor: not-allowed; }
 .card-junk .card-art { opacity: 0.55; filter: saturate(0.4); }
-.card-name { font-weight: bold; font-size: 12.5px; text-align: center; margin-top: 2px; }
-.card-art .art { width: 56px; height: 56px; }
-.card-desc { font-size: 10.5px; text-align: center; color: var(--ink-soft); line-height: 1.25; }
-.card-cost {
-  position: absolute; top: -9px; left: -9px; width: 26px; height: 26px; border-radius: 50%;
-  background: var(--gold); border: 2px solid var(--ink); display: flex; align-items: center; justify-content: center;
-  font-weight: bold; font-size: 13px;
+/* card chrome per the concept cards: art window up top, gem cost, ribbon banner */
+.card-art {
+  width: 100%; display: flex; justify-content: center; padding: 5px 0 3px;
+  background: #00000009; border-radius: 7px;
 }
+.card-art .art { width: 58px; height: 58px; }
+.card-name {
+  font-weight: bold; font-size: 12px; text-align: center; line-height: 1.1;
+  width: calc(100% + 10px); margin: 1px -5px 0; padding: 3px 2px;
+  background: var(--panel); border: 2px solid var(--ink); border-radius: 4px;
+  box-shadow: 0 2px 0 #00000022;
+}
+.card-desc { font-size: 10.5px; text-align: center; color: var(--ink-soft); line-height: 1.25; margin-top: 2px; }
+.card-cost {
+  position: absolute; top: -9px; left: -9px; width: 27px; height: 27px; z-index: 2;
+  background: radial-gradient(circle at 35% 30%, #8fa3b8, var(--blue) 60%, #3e4c5a);
+  border: 2px solid var(--ink); transform: rotate(45deg); border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+}
+.card-cost span { transform: rotate(-45deg); font-weight: bold; font-size: 13px; color: #f3ead2; }
 .card-junk .card-cost { background: #9a958a; }
 
 @keyframes deal { from { transform: translateY(40px) rotate(4deg); opacity: 0; } to { transform: none; opacity: 1; } }
