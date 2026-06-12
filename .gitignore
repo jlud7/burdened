@@ -1,0 +1,15 @@
+# dependencies / build
+node_modules/
+dist/
+
+# secrets — put REPLICATE_API_TOKEN here, never commit it
+.env
+.env.local
+
+# local concept-art photos & originals (kept out of the public repo)
+*.jpeg
+*.jpg
+design-doc.rtf
+
+# os
+.DS_Store
