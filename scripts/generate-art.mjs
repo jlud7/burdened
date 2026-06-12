@@ -36,7 +36,7 @@ const MODEL = process.env.REPLICATE_MODEL ?? 'openai/gpt-image-2';
 const STYLE =
   'Clean minimalist 2D vector game art, chibi proportions, character has blank white oval eyes and no other facial features, ' +
   'bold dark-brown outlines, flat side-on perspective, muted earthy palette of parchment beige, umber brown, sage green, slate blue and brick red, ' +
-  'subtle grainy distressed texture overlay, plain solid very light parchment background, single centered subject, no text. ';
+  'subtle grainy distressed texture overlay, plain solid flat light parchment beige background filling the whole frame, single centered subject, no text. ';
 
 const manifest = JSON.parse(readFileSync(resolve(root, 'scripts/art-manifest.json'), 'utf8'));
 
@@ -50,7 +50,15 @@ async function generate(id, prompt) {
       'Content-Type': 'application/json',
       Prefer: 'wait=60',
     },
-    body: JSON.stringify({ input: { prompt: STYLE + prompt, aspect_ratio: '1:1', ...(process.env.REPLICATE_EXTRA_INPUT ? JSON.parse(process.env.REPLICATE_EXTRA_INPUT) : {}) } }),
+    body: JSON.stringify({
+      input: {
+        prompt: STYLE + prompt,
+        aspect_ratio: '1:1',
+        output_format: 'png',
+        quality: 'medium',
+        ...(process.env.REPLICATE_EXTRA_INPUT ? JSON.parse(process.env.REPLICATE_EXTRA_INPUT) : {}),
+      },
+    }),
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   let pred = await res.json();
