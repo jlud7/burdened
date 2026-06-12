@@ -1,5 +1,6 @@
 import { CARDS, ITEMS } from './data';
-import { G, gridSize, itemsOn, fits, findItem } from './state';
+import type { ItemDef } from './types';
+import { G, gridSize, itemsOn, fits, findItem, dims } from './state';
 import { art } from './art';
 
 // ---------- delegated actions ----------
@@ -33,19 +34,27 @@ export function bindRoot(root: HTMLElement) {
 // ---------- placement preview ----------
 
 let previewUid: number | null = null;
+let lastCell: { grid: 'pack' | 'mule'; x: number; y: number } | null = null;
 
 export function setPreviewUid(uid: number | null) {
   previewUid = uid;
+  if (uid == null) lastCell = null;
+}
+
+/** re-run the ghost at the last hovered cell (after a rotate or rerender) */
+export function refreshPreview() {
+  if (lastCell) previewAt(lastCell.grid, lastCell.x, lastCell.y);
 }
 
 function previewAt(grid: 'pack' | 'mule', x: number, y: number) {
   clearPreview();
   const inst = previewUid != null ? findItem(previewUid) : undefined;
   if (!inst) return;
-  const def = ITEMS[inst.itemId];
+  lastCell = { grid, x, y };
+  const d = dims(inst);
   const ok = fits(grid, inst, x, y);
-  for (let dy = 0; dy < def.h; dy++) {
-    for (let dx = 0; dx < def.w; dx++) {
+  for (let dy = 0; dy < d.h; dy++) {
+    for (let dx = 0; dx < d.w; dx++) {
       document
         .querySelector(`[data-cell="${grid}:${x + dx}:${y + dy}"]`)
         ?.classList.add(ok ? 'cell-ok' : 'cell-bad');
@@ -75,20 +84,31 @@ export function renderGrid(
   let items = '';
   for (const inst of itemsOn(grid)) {
     const def = ITEMS[inst.itemId];
+    const d = dims(inst);
     const clickable = opts.itemAction && (!opts.itemActionLootOnly || def.kind === 'loot');
     const act = clickable ? `data-action="${opts.itemAction}" data-arg="${inst.uid}"` : '';
     const junkPips = def.junk ? `<span class="junk-pips">${'✦'.repeat(def.junk)}</span>` : '';
-    const sel = opts.selectedUid === inst.uid ? ' selected' : '';
-    items += `<div class="grid-item ${def.kind}${sel}" ${act} title="${def.name} — ${def.desc}"
-      style="grid-column:${inst.x + 1} / span ${def.w};grid-row:${inst.y + 1} / span ${def.h}">
+    const cls = `grid-item ${def.kind}${opts.selectedUid === inst.uid ? ' selected' : ''}${clickable ? '' : ' static'}`;
+    items += `<div class="${cls}" ${act} title="${def.name} — ${def.desc}"
+      style="grid-column:${inst.x + 1} / span ${d.w};grid-row:${inst.y + 1} / span ${d.h}">
       ${art(def.art)}${junkPips}</div>`;
   }
   return `<div class="grid grid-${grid}" style="--cols:${w};--rows:${h}">${cells}${items}</div>`;
 }
 
+/** compact size / worth / junk chips for an item, used in offers and the discard picker */
+export function itemChips(def: ItemDef): string {
+  const bits = [`${def.w}×${def.h}`];
+  if (def.gold) bits.push(`◉${def.gold}`);
+  if (def.wood) bits.push(`▤${def.wood}`);
+  if (def.stone) bits.push(`▲${def.stone}`);
+  if (def.junk) bits.push(`<span class="junk-text">${'✦'.repeat(def.junk)}</span>`);
+  return `<span class="chips-mini">${bits.map((b) => `<span class="mini">${b}</span>`).join('')}</span>`;
+}
+
 // ---------- cards ----------
 
-export function renderCard(defId: string, uid?: number, action?: string): string {
+export function renderCard(defId: string, uid?: number, action?: string, descOverride?: string): string {
   const def = CARDS[defId];
   const act = action && uid != null ? `data-action="${action}" data-arg="${uid}" data-card-uid="${uid}"` : '';
   const cost = def.unplayable ? '✕' : String(def.cost);
@@ -96,7 +116,7 @@ export function renderCard(defId: string, uid?: number, action?: string): string
     <div class="card-cost">${cost}</div>
     <div class="card-name">${def.name}</div>
     <div class="card-art">${art(def.art)}</div>
-    <div class="card-desc">${def.desc}</div>
+    <div class="card-desc">${descOverride ?? def.desc}</div>
   </div>`;
 }
 

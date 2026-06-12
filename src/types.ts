@@ -46,6 +46,8 @@ export interface ItemInstance {
   x: number; // -1 when not placed
   y: number;
   grid: 'pack' | 'mule' | 'stash';
+  /** rotated 90°: width and height swap */
+  rot?: boolean;
 }
 
 export interface EnemyDef {
@@ -164,6 +166,10 @@ export interface GameState {
   expedition: Expedition | null;
   combat: CombatState | null;
   /** results of the last run, for the summary screen */
-  lastRun: { survived: boolean; gold: number; wood: number; stone: number; nights: boolean } | null;
+  lastRun: {
+    survived: boolean; gold: number; wood: number; stone: number; nights: boolean;
+    /** what was banked (or lost on the road), by item name */
+    loot: { name: string; n: number }[];
+  } | null;
   runsCompleted: number;
 }

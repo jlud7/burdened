@@ -1,10 +1,11 @@
-import { ENEMIES, SIDEKICKS, DESTINATIONS } from '../data';
-import { G } from '../state';
+import { ENEMIES, SIDEKICKS, DESTINATIONS, ITEMS, CARDS } from '../data';
+import { G, findItem } from '../state';
 import { playCard, endTurn, intent } from '../combat';
 import { action, renderCard, hpBar, renderDeckList } from '../ui';
 import { art } from '../art';
 import { rerender } from '../router';
 import { timePill } from './map';
+import type { CombatCard } from '../types';
 
 let pileOpen: 'draw' | 'discard' | null = null;
 
@@ -14,6 +15,30 @@ action('c-pile', (arg) => {
   pileOpen = pileOpen === arg ? null : (arg as 'draw' | 'discard');
   rerender();
 });
+
+document.addEventListener('keydown', (e) => {
+  const c = G.combat;
+  if (G.screen !== 'combat' || !c) return;
+  if (e.key === 'Escape' && pileOpen) {
+    pileOpen = null;
+    rerender();
+    return;
+  }
+  if (c.over) return;
+  if (e.key >= '1' && e.key <= '9') {
+    const card = c.hand[Number(e.key) - 1];
+    if (card) playCard(card.uid);
+  } else if (e.key === 'e' || e.key === 'E') {
+    endTurn();
+  }
+});
+
+/** junk cards name the loot that spawned them — the burden made legible */
+function junkDesc(card: CombatCard): string | undefined {
+  if (CARDS[card.defId].type !== 'junk' || card.sourceUid == null) return undefined;
+  const inst = findItem(card.sourceUid);
+  return inst ? `Your ${ITEMS[inst.itemId].name}, hogging the pack. Worth something back home.` : undefined;
+}
 
 export function renderCombat(root: HTMLElement) {
   const c = G.combat!;
@@ -28,7 +53,7 @@ export function renderCombat(root: HTMLElement) {
       ? `<div class="intent intent-attack" title="It intends to attack.">⚔ ${move.value}</div>`
       : `<div class="intent intent-block" title="It intends to defend.">🛡 ${move.value}</div>`;
 
-  const handHtml = c.hand.map((card) => renderCard(card.defId, card.uid, 'c-play')).join('');
+  const handHtml = c.hand.map((card) => renderCard(card.defId, card.uid, 'c-play', junkDesc(card))).join('');
 
   root.innerHTML = `
     <header class="topbar">
@@ -61,6 +86,7 @@ export function renderCombat(root: HTMLElement) {
           <button class="pile-btn" data-action="c-pile" data-arg="draw" title="Draw pile">⬒ ${c.draw.length}</button>
           <button class="pile-btn" data-action="c-pile" data-arg="discard" title="Discard pile">⬓ ${c.discard.length}</button>
           <button class="btn" data-action="c-end-turn" ${c.over ? 'disabled' : ''}>End Turn</button>
+          <span class="kbd-hint">1–9 play · E end turn</span>
         </div>
       </div>
       ${pileOpen ? `<div class="deck-list pile-list"><h3>${pileOpen} pile</h3>${renderDeckList(pileOpen === 'draw' ? c.draw : c.discard)}</div>` : ''}

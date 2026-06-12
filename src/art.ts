@@ -263,6 +263,28 @@ const ART: Record<string, string> = {
   bld_blacksmith: house(C.steelDark, '⚒'),
   bld_apothecary: house(C.green, '⚗'),
   bld_watchtower: towerScene,
+
+  // run-summary scenes
+  summary_home: svg(`
+    <circle cx="78" cy="26" r="14" fill="${C.gold}" stroke="${C.ink}" stroke-width="2.5"/>
+    <rect x="0" y="78" width="100" height="22" fill="${C.leather}" opacity="0.45"/>
+    <rect x="18" y="34" width="9" height="50" fill="${C.wood}" stroke="${C.ink}" stroke-width="2.5"/>
+    <rect x="56" y="34" width="9" height="50" fill="${C.wood}" stroke="${C.ink}" stroke-width="2.5"/>
+    <path d="M14 36 Q41 18 68 36 L68 28 Q41 10 14 28 Z" fill="${C.wood}" stroke="${C.ink}" stroke-width="2.5"/>
+    <circle cx="41" cy="62" r="9" fill="${C.skin}" stroke="${C.ink}" stroke-width="2"/>
+    <rect x="35" y="70" width="12" height="14" rx="4" fill="${C.cloth}" stroke="${C.ink}" stroke-width="2"/>
+    <rect x="30" y="68" width="7" height="12" rx="3" fill="${C.leather}" stroke="${C.ink}" stroke-width="2"/>
+  `),
+  summary_lost: svg(`
+    <rect x="0" y="70" width="100" height="30" fill="${C.night}" opacity="0.5"/>
+    <circle cx="22" cy="20" r="10" fill="${C.paper}" stroke="${C.ink}" stroke-width="2"/>
+    <path d="M34 78 Q30 52 50 50 Q72 52 68 78 Q70 84 62 83 L40 83 Q32 84 34 78 Z"
+      fill="${C.leather}" stroke="${C.ink}" stroke-width="3" transform="rotate(-14 50 70)"/>
+    <path d="M42 60 Q50 54 58 60" stroke="${C.ink}" stroke-width="2.5" fill="none" transform="rotate(-14 50 70)"/>
+    <circle cx="74" cy="82" r="4" fill="${C.gold}" stroke="${C.ink}" stroke-width="1.5"/>
+    <circle cx="82" cy="76" r="3.4" fill="${C.gold}" stroke="${C.ink}" stroke-width="1.5"/>
+    <circle cx="28" cy="84" r="3.4" fill="${C.gold}" stroke="${C.ink}" stroke-width="1.5"/>
+  `),
 };
 
 const FALLBACK = svg(`<rect x="20" y="20" width="60" height="60" rx="10" fill="${C.paper}" stroke="${C.ink}" stroke-width="3"/>

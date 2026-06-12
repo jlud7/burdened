@@ -21,8 +21,9 @@ Built with Vite + TypeScript, no runtime dependencies. (The GDD calls for minima
 
 The complete core loop from the GDD:
 
-- **Inventory-based deckbuilding** — a 5×4 pack grid; equipped items grant cards (Simple Sword → 3× Strike, Fire Runestone → Fireball, …). No classes, just gear.
-- **The encumbrance system** — loot occupies grid space *and* adds Junk cards to your combat deck while carried. Drop loot mid-run if it's getting you killed.
+- **Inventory-based deckbuilding** — a 5×4 pack grid; equipped items grant cards (Simple Sword → 3× Strike, Fire Runestone → Fireball, …). No classes, just gear. Items rotate (press **R**), packed items can be picked up and moved, and a **tidy** button closes the gaps.
+- **The encumbrance system** — loot occupies grid space *and* adds Junk cards to your combat deck while carried. Drop loot mid-run if it's getting you killed — every junk card in combat names the item weighing you down.
+- **Smart packing** — taking loot auto-fits it, rearranging your whole pack if that's what it takes; when nothing helps, the offer becomes a discard picker: drop something (values shown), the loot packs itself.
 - **Dual-purpose items** — the Torch lights the road home (less corruption on the return trip), or can be played as *Searing Strike*… once.
 - **The 2/3–1/3 rule** — hire a Cleric, Soldier or Hound to fill out the back third of your deck; hire a Pack Mule for a bonus 3×3 grid at the cost of two *Cower in Fear* curses.
 - **Expeditions & backtracking** — pick the low-stakes Whispering Woods or the high-stakes Broken Tower, walk a node path out, then walk it back. Cleared nodes can **corrupt** into elite fights behind you.
@@ -34,9 +35,8 @@ The complete core loop from the GDD:
 ### Not yet (roadmap)
 
 - Village **Raid** events (3-wave tower defense with Town Cards) and building ruin/repair
-- Item rotation & true tetromino shapes in the grid
+- True tetromino shapes in the grid
 - Multi-enemy fights, more destinations, more events, audio
-- GitHub Pages deploy
 
 ## Art pipeline
 
@@ -57,7 +57,7 @@ PNGs land in `public/art/` and the game uses them automatically — any id witho
 
 ## How to play
 
-1. **Village** — click a stash item, then a pack cell, to equip it. Watch the deck readout under the grid. Pick a destination, maybe hire help, and *Set out at dawn*.
-2. **Expedition** — press on through nodes; fight, gather, investigate. Every action ticks the clock (top middle). Loot is offered after fights — taking it adds Junk to your deck.
+1. **Village** — click a stash item, then a pack cell, to equip it (**R** rotates; click packed items to pick them up and move them). Watch the deck readout under the grid. Pick a destination, maybe hire help, and *Set out at dawn*.
+2. **Expedition** — press on through nodes; fight, gather, investigate. Every action ticks the clock (top middle). Loot is offered after fights — taking it adds Junk to your deck. In combat, **1–9** plays cards and **E** ends the turn.
 3. **Turn back** before the clock beats you. Each cleared node you re-cross can corrupt into an elite fight — worse at night, better with a torch.
 4. **Extract** at the village gate to bank resources, then build up the village and go again.

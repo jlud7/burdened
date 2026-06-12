@@ -129,6 +129,9 @@ body.phase-night .offer { background: #d8d0bc; }
 .grid-item:hover { transform: scale(1.04); }
 .grid-item .art { width: 70%; height: 70%; }
 .grid-item.loot { background: #e3cf9b; border-style: dashed; }
+.grid-item.selected { border-color: var(--green); box-shadow: 0 0 0 3px #7a845088; z-index: 3; }
+.grid-item.static { cursor: default; }
+.grid-item.static:hover { transform: none; }
 .junk-pips { position: absolute; bottom: 1px; right: 4px; font-size: 10px; color: var(--red); letter-spacing: 1px; }
 
 @keyframes pop-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -211,6 +214,8 @@ body.phase-night .offer { background: #d8d0bc; }
 .time-pill, .torch-pill, .deck-pill {
   padding: 4px 12px; border-radius: 20px; font-size: 13.5px; font-weight: bold; background: #00000014;
 }
+button.deck-pill { font-family: inherit; color: var(--ink); border: 2px solid transparent; cursor: pointer; }
+button.deck-pill:hover { border-color: var(--ink-soft); }
 .time-day { background: #c9a23f44; }
 .time-dusk { background: #a04b3b33; }
 .time-night { background: var(--night); color: #d8d0bc; }
@@ -315,3 +320,39 @@ body.phase-night .offer { background: #d8d0bc; }
 
 .hit-flash .art-xl { animation: flash-kf 0.3s ease; }
 @keyframes flash-kf { 0% { filter: brightness(2.2) saturate(0.2); } 100% { filter: none; } }
+
+/* ---------- pack & loot QoL ---------- */
+
+.pack-toolbar {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin: 6px 0 2px; min-height: 32px;
+}
+.tidy-btn { float: right; }
+
+.chips-mini { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.chips-mini .mini {
+  font-size: 11px; font-weight: bold; font-style: normal; color: var(--ink-soft);
+  background: #00000012; border-radius: 10px; padding: 1px 7px; white-space: nowrap;
+}
+
+.offer-entry.noroom { display: block; }
+.noroom-head { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.droppables { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; }
+.droppable {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--ink);
+  background: #00000008; border: 2px dashed var(--ink-soft); border-radius: var(--radius); padding: 4px 10px;
+  transition: border-color 0.1s, background 0.1s;
+}
+.droppable:hover { border-color: var(--red); background: #a04b3b18; }
+
+.drop-confirm {
+  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+  background: #a04b3b14; border: 2px dashed var(--red); border-radius: var(--radius);
+  padding: 6px 10px; margin-bottom: 8px; animation: pop-in 0.15s ease;
+}
+
+.btn-warn.confirm { animation: pulse 0.9s infinite; }
+
+.kbd-hint { font-size: 11px; color: var(--ink-soft); text-align: center; font-style: italic; }
+.map-deck { min-width: min(560px, 92vw); max-width: 640px; }

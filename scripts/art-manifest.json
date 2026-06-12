@@ -1,5 +1,7 @@
 [
   { "id": "hero", "prompt": "A young villager adventurer standing idle, simple slate-blue tunic, short brown hair, small satchel." },
+  { "id": "summary_home", "prompt": "A small weary adventurer seen from behind carrying an enormous overstuffed leather backpack, walking through a humble wooden village gate at golden dawn, warm low sun, long soft shadows, sense of relief and homecoming." },
+  { "id": "summary_lost", "prompt": "A lone abandoned leather adventurer's backpack lying tipped over on a dark forest road at night, flap open, a few gold coins spilled beside it, cold slate-blue moonlight, no people anywhere, somber quiet mood." },
   { "id": "side_cleric", "prompt": "A small chibi cleric in beige robes with a golden cross pendant, hands folded, standing idle." },
   { "id": "side_soldier", "prompt": "A small chibi soldier in dull grey armor holding a round shield, standing at ease." },
   { "id": "side_hound", "prompt": "A loyal brown hunting hound sitting, tail mid-wag, simple shapes." },

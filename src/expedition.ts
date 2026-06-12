@@ -6,6 +6,8 @@ import { rerender } from './router';
 export interface LootEntry {
   itemId: string;
   state: 'pending' | 'taken' | 'left' | 'noroom';
+  /** the pack had to be rearranged to fit it */
+  repacked?: boolean;
 }
 
 export let currentOffer: { title: string; entries: LootEntry[] } | null = null;
@@ -14,6 +16,7 @@ export let packOpen = false;
 
 export function togglePack() {
   packOpen = !packOpen;
+  if (!packOpen) pendingDropUid = null;
   rerender();
 }
 
@@ -33,6 +36,7 @@ export function embark(destId: string, sidekickId: string | null, mule: boolean)
   currentOffer = null;
   noteText = null;
   packOpen = false;
+  pendingDropUid = null;
   G.screen = 'map';
   save(); // persists nothing mid-run, but locks in the gold spend if they refresh
   pressOn();
@@ -174,13 +178,15 @@ export function takeLoot(idx: number) {
   if (!currentOffer) return;
   const entry = currentOffer.entries[idx];
   const inst = spawnItem(entry.itemId);
-  if (autoPlace(inst)) {
+  const placed = autoPlace(inst);
+  if (placed) {
     entry.state = 'taken';
+    entry.repacked = placed === 'repacked';
     G.expedition?.lootedUids.push(inst.uid);
   } else {
     destroyItem(inst.uid);
-    entry.state = 'noroom';
-    packOpen = true; // show the pack so they can drop something
+    entry.state = 'noroom'; // the offer shows a discard picker for this entry
+    packOpen = true;
   }
   maybeCloseOffer();
   rerender();
@@ -211,5 +217,28 @@ export function dropLoot(uid: number) {
   if (!inst || inst.grid === 'stash') return;
   if (ITEMS[inst.itemId].kind !== 'loot') return;
   destroyItem(uid);
+  if (pendingDropUid === uid) pendingDropUid = null;
+  rerender();
+}
+
+/** drop something to make room, then immediately retry the blocked offer entry */
+export function dropAndRetry(entryIdx: number, uid: number) {
+  const inst = G.items.find((i) => i.uid === uid);
+  if (!inst || inst.grid === 'stash' || ITEMS[inst.itemId].kind !== 'loot') return;
+  destroyItem(uid);
+  if (pendingDropUid === uid) pendingDropUid = null;
+  retryLoot(entryIdx);
+}
+
+// two-step confirm for dropping loot straight from the pack panel (misclick insurance)
+export let pendingDropUid: number | null = null;
+
+export function requestDrop(uid: number) {
+  pendingDropUid = pendingDropUid === uid ? null : uid;
+  rerender();
+}
+
+export function cancelDrop() {
+  pendingDropUid = null;
   rerender();
 }

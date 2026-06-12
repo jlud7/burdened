@@ -23,13 +23,17 @@ export function renderSummary(root: HTMLElement) {
     run.stone ? `▲ ${run.stone} stone` : '',
   ].filter(Boolean);
 
+  const lootList = (run.loot ?? []).map((l) => `${l.n}× ${l.name}`).join(', ');
+
   const body = run.survived
     ? `<h1>You made it home${run.nights ? ' — barely, in the dark' : ''}.</h1>
-       ${art('hero', 'art-xl')}
+       ${art('summary_home', 'art-xl')}
+       ${lootList ? `<p class="hint">Out of the pack, onto the table: ${lootList}.</p>` : ''}
        <p>${gains.length ? `The village takes stock: <strong>${gains.join(', ')}</strong>.` : 'You came back with empty pockets, but you came back.'}</p>`
     : `<h1>You didn't make it back.</h1>
-       ${art('card_cower', 'art-xl')}
-       <p>Everything you carried is lost on the road. The village endures, and your gear finds its way home.</p>`;
+       ${art('summary_lost', 'art-xl')}
+       ${lootList ? `<p class="hint">Lost on the road: ${lootList}.</p>` : ''}
+       <p>Everything you carried is gone. The village endures, and your gear finds its way home.</p>`;
 
   root.innerHTML = `
     <main class="summary-main">

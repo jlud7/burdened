@@ -108,15 +108,21 @@ export function findItem(uid: number): ItemInstance | undefined {
   return G.items.find((i) => i.uid === uid);
 }
 
+/** effective footprint, accounting for rotation */
+export function dims(inst: ItemInstance): { w: number; h: number } {
+  const def = ITEMS[inst.itemId];
+  return inst.rot ? { w: def.h, h: def.w } : { w: def.w, h: def.h };
+}
+
 /** can `inst`'s item be placed with its top-left corner at (x, y) on `grid`? */
 export function fits(grid: 'pack' | 'mule', inst: ItemInstance, x: number, y: number): boolean {
-  const def = ITEMS[inst.itemId];
+  const d = dims(inst);
   const { w, h } = gridSize(grid);
-  if (x < 0 || y < 0 || x + def.w > w || y + def.h > h) return false;
+  if (x < 0 || y < 0 || x + d.w > w || y + d.h > h) return false;
   for (const other of itemsOn(grid)) {
     if (other.uid === inst.uid) continue;
-    const od = ITEMS[other.itemId];
-    const overlap = x < other.x + od.w && x + def.w > other.x && y < other.y + od.h && y + def.h > other.y;
+    const od = dims(other);
+    const overlap = x < other.x + od.w && x + d.w > other.x && y < other.y + od.h && y + d.h > other.y;
     if (overlap) return false;
   }
   return true;
@@ -130,24 +136,101 @@ export function place(inst: ItemInstance, grid: 'pack' | 'mule', x: number, y: n
   return true;
 }
 
+/** toggle 90° rotation. Placed items only rotate if they still fit in place. */
+export function rotate(inst: ItemInstance): boolean {
+  const def = ITEMS[inst.itemId];
+  if (def.w === def.h) return false;
+  inst.rot = !inst.rot;
+  if (inst.grid !== 'stash' && !fits(inst.grid, inst, inst.x, inst.y)) {
+    inst.rot = !inst.rot; // no room to swing it around here
+    return false;
+  }
+  return true;
+}
+
 export function unequip(inst: ItemInstance) {
   inst.grid = 'stash';
   inst.x = -1;
   inst.y = -1;
+  inst.rot = false;
 }
 
-/** auto-place into the first open spot on pack, then mule. */
-export function autoPlace(inst: ItemInstance): boolean {
-  const grids: ('pack' | 'mule')[] = G.expedition?.mule ? ['pack', 'mule'] : ['pack'];
-  for (const grid of grids) {
-    const { w, h } = gridSize(grid);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (place(inst, grid, x, y)) return true;
+function carryGrids(): ('pack' | 'mule')[] {
+  return G.expedition?.mule ? ['pack', 'mule'] : ['pack'];
+}
+
+/** first open spot on pack, then mule — trying the current orientation, then rotated */
+function quickPlace(inst: ItemInstance): boolean {
+  const def = ITEMS[inst.itemId];
+  const r0 = !!inst.rot;
+  const rots = def.w === def.h ? [r0] : [r0, !r0];
+  for (const rot of rots) {
+    inst.rot = rot;
+    for (const grid of carryGrids()) {
+      const { w, h } = gridSize(grid);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (place(inst, grid, x, y)) return true;
+        }
       }
     }
   }
+  inst.rot = r0;
   return false;
+}
+
+type Layout = { inst: ItemInstance; grid: ItemInstance['grid']; x: number; y: number; rot: boolean }[];
+
+const snapshot = (items: ItemInstance[]): Layout =>
+  items.map((inst) => ({ inst, grid: inst.grid, x: inst.x, y: inst.y, rot: !!inst.rot }));
+
+const restore = (layout: Layout) =>
+  layout.forEach(({ inst, grid, x, y, rot }) => Object.assign(inst, { grid, x, y, rot }));
+
+/**
+ * Rearrange everything carried (plus `extra`, if given) from scratch so it all fits.
+ * Greedy first-fit-decreasing under a few orderings and orientation preferences —
+ * not provably optimal, but on grids this small it finds a packing whenever one
+ * reasonably exists. Commits on success, rolls back untouched on failure.
+ */
+export function repack(extra?: ItemInstance): boolean {
+  const items = [...itemsOn('pack'), ...itemsOn('mule'), ...(extra ? [extra] : [])];
+  const saved = snapshot(items);
+  const area = (i: ItemInstance) => ITEMS[i.itemId].w * ITEMS[i.itemId].h;
+  const maxDim = (i: ItemInstance) => Math.max(ITEMS[i.itemId].w, ITEMS[i.itemId].h);
+  const orderings: ((a: ItemInstance, b: ItemInstance) => number)[] = [
+    (a, b) => area(b) - area(a) || maxDim(b) - maxDim(a),
+    (a, b) => maxDim(b) - maxDim(a) || area(b) - area(a),
+  ];
+  for (const order of orderings) {
+    for (const wideFirst of [true, false]) {
+      const sorted = [...items].sort(order);
+      sorted.forEach((i) => Object.assign(i, { grid: 'stash', x: -1, y: -1 }));
+      let ok = true;
+      for (const inst of sorted) {
+        const def = ITEMS[inst.itemId];
+        inst.rot = def.w === def.h ? false : (def.w >= def.h) !== wideFirst;
+        if (!quickPlace(inst)) { ok = false; break; }
+      }
+      if (ok) return true;
+      restore(saved);
+    }
+  }
+  return false;
+}
+
+export type PlaceResult = 'placed' | 'repacked' | null;
+
+/** place wherever it fits as-is; failing that, rearrange the whole pack around it */
+export function autoPlace(inst: ItemInstance): PlaceResult {
+  if (quickPlace(inst)) return 'placed';
+  if (repack(inst)) return 'repacked';
+  return null;
+}
+
+/** loot currently being carried — the only things that can be dropped mid-run */
+export function carriedLoot(): ItemInstance[] {
+  return G.items.filter((i) => i.grid !== 'stash' && ITEMS[i.itemId].kind === 'loot');
 }
 
 export function spawnItem(itemId: string): ItemInstance {
@@ -223,6 +306,15 @@ export function isNight(): boolean {
   return timePhase() === 'night';
 }
 
+/** ticks until the next phase change (null at night — it doesn't get worse) */
+export function nextPhaseIn(): number | null {
+  const t = G.expedition?.ticks ?? 0;
+  const day = dayLength();
+  if (t < day) return day - t;
+  if (t < day + DUSK_TICKS) return day + DUSK_TICKS - t;
+  return null;
+}
+
 export function tick(n = 1) {
   if (G.expedition) G.expedition.ticks += n;
 }
@@ -271,9 +363,20 @@ export function maybeCorrupt(node: MapNode): boolean {
   return false;
 }
 
+/** tally carried loot by name, for the run summary */
+function lootTally(): { name: string; n: number }[] {
+  const counts = new Map<string, number>();
+  for (const inst of carriedLoot()) {
+    const name = ITEMS[inst.itemId].name;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([name, n]) => ({ name, n }));
+}
+
 /** bank carried loot, return gear to stash-equipped state, end the run */
 export function extract() {
   const gained = { gold: 0, wood: 0, stone: 0 };
+  const loot = lootTally();
   for (const inst of [...G.items]) {
     if (inst.grid === 'stash') continue;
     const def = ITEMS[inst.itemId];
@@ -289,7 +392,7 @@ export function extract() {
   G.resources.gold += gained.gold;
   G.resources.wood += gained.wood;
   G.resources.stone += gained.stone;
-  G.lastRun = { survived: true, ...gained, nights: isNight() };
+  G.lastRun = { survived: true, ...gained, nights: isNight(), loot };
   G.expedition = null;
   G.combat = null;
   G.hp = G.maxHp;
@@ -300,12 +403,13 @@ export function extract() {
 
 /** death: carried loot is gone, gear survives (kind to the player), village persists */
 export function perish() {
+  const loot = lootTally();
   for (const inst of [...G.items]) {
     if (inst.grid === 'stash') continue;
     if (ITEMS[inst.itemId].kind === 'loot') destroyItem(inst.uid);
     else unequip(inst);
   }
-  G.lastRun = { survived: false, gold: 0, wood: 0, stone: 0, nights: isNight() };
+  G.lastRun = { survived: false, gold: 0, wood: 0, stone: 0, nights: isNight(), loot };
   G.expedition = null;
   G.combat = null;
   G.hp = G.maxHp;
