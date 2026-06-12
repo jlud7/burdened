@@ -8,6 +8,8 @@ Full concept: [docs/design-doc.md](docs/design-doc.md)
 
 ## Play it
 
+**▶ [jlud7.github.io/burdened](https://jlud7.github.io/burdened/)** (deployed from `main` on every push)
+
 ```sh
 npm install
 npm run dev      # → http://localhost:5173

@@ -45,6 +45,7 @@ const only = process.argv.slice(2);
 async function generate(id, prompt) {
   const res = await fetch(`https://api.replicate.com/v1/models/${MODEL}/predictions`, {
     method: 'POST',
+    signal: AbortSignal.timeout(120_000),
     headers: {
       Authorization: `Bearer ${TOKEN}`,
       'Content-Type': 'application/json',
@@ -68,13 +69,14 @@ async function generate(id, prompt) {
     await new Promise((r) => setTimeout(r, 2500));
     const poll = await fetch(`https://api.replicate.com/v1/predictions/${pred.id}`, {
       headers: { Authorization: `Bearer ${TOKEN}` },
+      signal: AbortSignal.timeout(30_000),
     });
     pred = await poll.json();
   }
   if (pred.status !== 'succeeded') throw new Error(`prediction ${pred.status}: ${pred.error ?? ''}`);
 
   const url = Array.isArray(pred.output) ? pred.output[0] : pred.output;
-  const img = await fetch(url);
+  const img = await fetch(url, { signal: AbortSignal.timeout(120_000) });
   writeFileSync(resolve(outDir, `${id}.png`), Buffer.from(await img.arrayBuffer()));
 }
 
