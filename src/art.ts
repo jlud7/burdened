@@ -290,8 +290,10 @@ const ART: Record<string, string> = {
 const FALLBACK = svg(`<rect x="20" y="20" width="60" height="60" rx="10" fill="${C.paper}" stroke="${C.ink}" stroke-width="3"/>
   <text x="50" y="58" text-anchor="middle" font-size="24" fill="${C.ink}">?</text>`);
 
-/** render art for an id: SVG placeholder, covered by art/<id>.png if generated */
+/** render art for an id: SVG placeholder, replaced by art/<id>.png once it loads.
+ * The PNGs are background-stripped sprites, so the placeholder must be hidden
+ * (not just covered) or it would show through the transparency. */
 export function art(id: string, cls = ''): string {
   const ph = ART[id] ?? FALLBACK;
-  return `<span class="art ${cls}">${ph}<img src="art/${id}.png" alt="" loading="lazy" onerror="this.remove()"/></span>`;
+  return `<span class="art ${cls}">${ph}<img alt="" loading="lazy" onload="this.parentElement.classList.add('img-ok')" onerror="this.remove()" src="art/${id}.png"/></span>`;
 }

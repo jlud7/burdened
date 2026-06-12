@@ -86,7 +86,8 @@ body.phase-night .offer { background: #d8d0bc; }
 
 .art { position: relative; display: inline-flex; width: 48px; height: 48px; flex: none; }
 .art svg, .art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.art img { border-radius: 8px; } /* generated art is a contained panel, per the concept sheets */
+.art img { border-radius: 8px; } /* scene art (destinations, summaries) is a contained panel */
+.art.img-ok svg { display: none; } /* sprite PNGs are transparent — don't let the placeholder bleed through */
 .art-sm { width: 36px; height: 36px; }
 .art-lg { width: 84px; height: 84px; }
 .art-xl { width: 130px; height: 130px; }

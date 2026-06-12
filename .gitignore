@@ -9,6 +9,7 @@ dist/
 # local concept-art photos & originals (kept out of the public repo)
 *.jpeg
 *.jpg
+*.docx
 design-doc.rtf
 
 # os

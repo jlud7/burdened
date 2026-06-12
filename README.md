@@ -55,6 +55,12 @@ The game ships with hand-rolled SVG placeholders in the concept style (chibi, bl
 
 PNGs land in `public/art/` and the game uses them automatically — any id without a PNG falls back to its SVG placeholder. Prompts live in `scripts/art-manifest.json`; the shared style prefix is in `scripts/generate-art.mjs`. If Replicate's slug for GPT Image 2.0 differs, set `REPLICATE_MODEL` in `.env`.
 
+3. ```sh
+   npm run art:bg            # strip backgrounds from sprites (851-labs/background-remover)
+   ```
+
+   Characters, enemies, items, cards and buildings become transparent cutouts that float on the game's own UI; scene art (destinations, run summaries) keeps its painted background. New generations should be downscaled (`sips -Z 320 public/art/<id>.png`) and then stripped.
+
 ## How to play
 
 1. **Village** — click a stash item, then a pack cell, to equip it (**R** rotates; click packed items to pick them up and move them). Watch the deck readout under the grid. Pick a destination, maybe hire help, and *Set out at dawn*.
