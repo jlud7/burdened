@@ -489,3 +489,32 @@ body.phase-night .combatant-label, body.phase-night .battlefield .block-chip { c
 .grid-item.badge { background: #d9c98a; }
 .grid-item.consumable { background: #d3dcb8; border-style: dotted; }
 .grid-item.crate { background: #cbb8d3; border-style: double; }
+
+/* ---------- onboarding: coach marks + intro modal ---------- */
+
+.coach {
+  display: flex; align-items: center; gap: 12px; max-width: 1180px; margin: 0 auto 10px;
+  background: #c9a23f1f; border: 2px solid var(--gold); border-left-width: 6px;
+  border-radius: var(--radius); padding: 9px 14px; animation: pop-in 0.25s ease;
+}
+.coach-text { flex: 1; font-size: 13.5px; line-height: 1.4; }
+.coach-text strong { color: #8a6d1d; }
+.coach .btn { flex: none; }
+body.phase-night .coach { background: #c9a23f2e; }
+
+.intro-overlay {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  background: #2c2419cc; backdrop-filter: blur(3px); animation: fade-in 0.3s ease; padding: 20px;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.intro-card {
+  background: var(--panel); border: 3px solid var(--ink); border-radius: 16px;
+  box-shadow: 6px 8px 0 #00000044; padding: 28px 34px; max-width: 460px; text-align: center;
+  animation: pop-in 0.3s ease;
+}
+.intro-card h1 { font-size: 30px; letter-spacing: 6px; margin: 0 0 4px; }
+.intro-tag { font-style: italic; color: var(--ink-soft); margin: 0 0 18px; font-size: 15px; }
+.intro-points { list-style: none; padding: 0; margin: 0 0 22px; text-align: left; display: flex; flex-direction: column; gap: 11px; }
+.intro-points li { font-size: 14px; line-height: 1.4; padding-left: 26px; position: relative; }
+.intro-points li::before { content: '◆'; position: absolute; left: 4px; top: 1px; color: var(--gold); }
+.intro-points strong { color: var(--ink); }

@@ -6,6 +6,7 @@ import { action, renderCard, hpBar, renderDeckList, statusChips, weightBar, item
 import { art } from '../art';
 import { rerender } from '../router';
 import { timePill } from './map';
+import { tipBanner } from '../tutorial';
 import type { CombatCard } from '../types';
 
 let pileOpen: 'draw' | 'discard' | null = null;
@@ -129,6 +130,7 @@ export function renderCombat(root: HTMLElement) {
       </div>
     </header>
     ${raidBanner}
+    ${tipBanner('combat')}
     <main class="combat-main">
       <div class="battlefield">
         <img class="battle-bg" src="art/${bg}.png" alt="" onerror="this.remove()"/>

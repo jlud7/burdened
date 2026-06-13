@@ -9,6 +9,7 @@ import { action, renderGrid, renderDeckList, resourceBar, setPreviewUid, refresh
 import { art } from '../art';
 import { rerender } from '../router';
 import { floatText } from '../fx';
+import { introModal, tipBanner, resetTips } from '../tutorial';
 
 let selectedUid: number | null = null;
 let destId = 'woods';
@@ -161,6 +162,7 @@ action('v-sell', (arg) => {
 action('v-wipe', () => {
   if (confirm('Abandon this village and start over?')) {
     wipeSave();
+    resetTips(); // a fresh start re-teaches
     rerender();
   }
 });
@@ -288,12 +290,14 @@ export function renderVillage(root: HTMLElement) {
     .join('');
 
   root.innerHTML = `
+    ${introModal()}
     <header class="topbar">
       <h1>BURDENED</h1>
       <div class="topbar-mid">${resourceBar()}</div>
       <div class="topbar-right"><span class="hint">runs: ${G.runsCompleted}</span>
         <button class="btn btn-ghost btn-sm" data-action="v-wipe">reset</button></div>
     </header>
+    ${tipBanner('village')}
     <main class="village-layout">
       <section class="panel">
         <h2>The Stash</h2>

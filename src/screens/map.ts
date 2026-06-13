@@ -14,6 +14,7 @@ import {
 import { action, renderGrid, hpBar, itemChips, renderDeckList, weightBar } from '../ui';
 import { art } from '../art';
 import { rerender } from '../router';
+import { tipBanner } from '../tutorial';
 import type { MapNode } from '../types';
 
 let deckOpen = false;
@@ -316,6 +317,7 @@ export function renderMap(root: HTMLElement) {
         <button class="btn btn-sm" data-action="m-pack">${packOpen ? 'close pack' : 'pack'}</button>
       </div>
     </header>
+    ${tipBanner(exp.returning ? 'night' : 'map')}
     <div class="hp-row">${hpBar(G.hp, G.maxHp)}${weightBar(true)}</div>
     <div class="track-scroll">${renderTrack()}</div>
     <main class="map-main">

@@ -90,24 +90,24 @@ export const ITEMS: Record<string, ItemDef> = {
   // ---- loot crates: unidentified until the Blacksmith opens them (GDD v3 §5) ----
   ornate_box: { id: 'ornate_box', name: 'Ornate Box', kind: 'crate', w: 2, h: 2, weight: 18, desc: 'Locked and heavy. The Blacksmith can open it back home.', art: 'item_ornate_box' },
   treasure_chest: { id: 'treasure_chest', name: 'Treasure Chest', kind: 'crate', w: 3, h: 2, weight: 30, desc: 'Enormous. Does nothing but wait for extraction — and pay off.', art: 'item_chest' },
-  // ---- loot ----
-  coin_bag: { id: 'coin_bag', name: 'Bag of Coins', kind: 'loot', w: 1, h: 1, weight: 3, gold: 15, desc: '15 gold. The weight adds up.', art: 'item_coin_bag' },
-  chalice: { id: 'chalice', name: 'Golden Chalice', kind: 'loot', w: 1, h: 2, weight: 4, gold: 35, desc: '35 gold, solid and heavy.', art: 'item_chalice' },
-  small_chest: { id: 'small_chest', name: 'Small Chest', kind: 'loot', w: 2, h: 2, weight: 8, gold: 70, desc: '70 gold in loose valuables.', art: 'item_small_chest' },
-  ancient_herbs: { id: 'ancient_herbs', name: 'Ancient Herbs', kind: 'loot', w: 1, h: 1, weight: 1, gold: 20, desc: '20 gold to the right buyer.', art: 'item_ancient_herbs' },
-  wood_bundle: { id: 'wood_bundle', name: 'Wood Bundle', kind: 'loot', w: 2, h: 1, weight: 8, wood: 8, desc: '8 wood for the village.', art: 'item_wood' },
-  stone_block: { id: 'stone_block', name: 'Stone Block', kind: 'loot', w: 2, h: 1, weight: 10, stone: 6, desc: '6 stone for the village.', art: 'item_stone' },
-  essence_vial: { id: 'essence_vial', name: 'Vial of Essence', kind: 'loot', w: 1, h: 1, weight: 1, essence: 3, desc: '3 magic essence — the Kennel trains with it.', art: 'item_essence' },
+  // ---- loot (treasure is HEAVY — that's the whole tension) ----
+  coin_bag: { id: 'coin_bag', name: 'Bag of Coins', kind: 'loot', w: 1, h: 1, weight: 6, gold: 15, desc: '15 gold — and the coins weigh on you.', art: 'item_coin_bag' },
+  chalice: { id: 'chalice', name: 'Golden Chalice', kind: 'loot', w: 1, h: 2, weight: 9, gold: 35, desc: '35 gold. Solid gold is solid weight.', art: 'item_chalice' },
+  small_chest: { id: 'small_chest', name: 'Small Chest', kind: 'loot', w: 2, h: 2, weight: 18, gold: 70, desc: '70 gold in loose valuables — a real haul to lug home.', art: 'item_small_chest' },
+  ancient_herbs: { id: 'ancient_herbs', name: 'Ancient Herbs', kind: 'loot', w: 1, h: 1, weight: 2, gold: 20, desc: '20 gold to the right buyer.', art: 'item_ancient_herbs' },
+  wood_bundle: { id: 'wood_bundle', name: 'Wood Bundle', kind: 'loot', w: 2, h: 1, weight: 12, wood: 8, desc: '8 wood for the village. Bulky.', art: 'item_wood' },
+  stone_block: { id: 'stone_block', name: 'Stone Block', kind: 'loot', w: 2, h: 1, weight: 16, stone: 6, desc: '6 stone for the village. Backbreaking.', art: 'item_stone' },
+  essence_vial: { id: 'essence_vial', name: 'Vial of Essence', kind: 'loot', w: 1, h: 1, weight: 2, essence: 3, desc: '3 magic essence — the Kennel trains with it.', art: 'item_essence' },
 };
 
 export const ENEMIES: Record<string, EnemyDef> = {
   slime: {
-    id: 'slime', name: 'Blue Slime', hp: 14, art: 'enemy_slime',
-    pattern: [{ name: 'Tackle', attack: 5 }, { name: 'Squish', attack: 6 }, { name: 'Harden', block: 4 }],
+    id: 'slime', name: 'Blue Slime', hp: 16, art: 'enemy_slime',
+    pattern: [{ name: 'Tackle', attack: 5 }, { name: 'Squish', attack: 7 }, { name: 'Harden', block: 4 }],
   },
   wolf: {
-    id: 'wolf', name: 'Forest Wolf', hp: 16, art: 'enemy_wolf',
-    pattern: [{ name: 'Bite', attack: 7 }, { name: 'Claw', attack: 3 }],
+    id: 'wolf', name: 'Forest Wolf', hp: 18, art: 'enemy_wolf',
+    pattern: [{ name: 'Bite', attack: 8 }, { name: 'Claw', attack: 4 }],
   },
   goblin: {
     id: 'goblin', name: 'Goblin Scout', hp: 18, art: 'enemy_goblin',
@@ -191,7 +191,10 @@ export const MULE_GRID = { w: 3, h: 3 };
 export const PACK_GRID = { w: 5, h: 4 };
 
 // ---- the fluid encumbrance system (GDD v3 §3) ----
-export const MAX_WEIGHT = 100;
+// capacity 80 (the doc's "e.g. 100" is an example): with a ~20-weight gear
+// loadout sitting near 25%, grabbing 2-3 treasures reliably crosses the 50%
+// Encumbered line, so the burden tension shows up even in a short first run.
+export const MAX_WEIGHT = 80;
 export const MULE_WEIGHT_BONUS = 40;
 /** thresholds as fractions of capacity; each tier injects 2 of its card while crossed */
 export const WEIGHT_TIERS: { at: number; cardId: string; label: string }[] = [
@@ -201,9 +204,9 @@ export const WEIGHT_TIERS: { at: number; cardId: string; label: string }[] = [
 ];
 export const BURDEN_COPIES = 2;
 
-export const CORRUPTION_NIGHT = 0.45;
-export const TORCH_CORRUPTION_BONUS = 0.1; // subtracted while carrying a lit torch
-export const NIGHT_MULT = 1.4;
+export const CORRUPTION_NIGHT = 0.35; // fewer forced ambushes on the way home (was 0.45)
+export const TORCH_CORRUPTION_BONUS = 0.12; // a lit torch matters more now
+export const NIGHT_MULT = 1.3; // night still bites, but isn't an instant wipe (was 1.4)
 
 // ---- village raids ----
 export const RAID_POOL = ['red_goblin', 'goblin', 'brute'];
@@ -250,17 +253,18 @@ export const DESTINATIONS: Record<string, DestinationDef> = {
     nightEnemies: ['shade', 'night_stalker', 'wolf'],
     elites: ['treant'],
     lootTable: [
-      { itemId: 'coin_bag', weight: 5 },
-      { itemId: 'ancient_herbs', weight: 3 },
-      { itemId: 'apple', weight: 3 },
-      { itemId: 'bread', weight: 2 },
-      { itemId: 'chalice', weight: 1 },
+      { itemId: 'coin_bag', weight: 4 },
+      { itemId: 'chalice', weight: 3 },
+      { itemId: 'ancient_herbs', weight: 2 },
+      { itemId: 'apple', weight: 2 },
+      { itemId: 'bread', weight: 1 },
+      { itemId: 'small_chest', weight: 1 },
     ],
     gatherTable: [
-      { itemId: 'wood_bundle', weight: 5 },
-      { itemId: 'apple', weight: 2 },
+      { itemId: 'wood_bundle', weight: 4 },
+      { itemId: 'stone_block', weight: 2 },
       { itemId: 'ancient_herbs', weight: 2 },
-      { itemId: 'stone_block', weight: 1 },
+      { itemId: 'apple', weight: 1 },
       { itemId: 'berries', weight: 1 },
     ],
     eliteReward: 'ornate_box',
