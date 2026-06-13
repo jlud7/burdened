@@ -2,9 +2,9 @@
 
 *A roguelite deckbuilder crossed with an extraction survival game.*
 
-Your gear **is** your deck — arrange items in a grid-based pack and every sword, shield and runestone adds its cards to your draw pile. But so does your greed: every chalice and chest you haul home stuffs the deck with unplayable **Junk**, choking out the cards that keep you alive. Get in, get loot, and get back to the village **before nightfall** — the road home corrupts behind you.
+Your gear **is** your deck — arrange items in a grid-based pack and every sword, shield and runestone adds its cards to your draw pile. But so does your greed: every item has a **weight**, and as your pack fills past 50/75/100% capacity, debilitating **Burden** cards flood your deck — and vanish the instant you drop or eat enough to dip back under. Get in, get loot, and carry it home through the **night** that falls when you turn back, while the road corrupts behind you.
 
-Full concept: [docs/design-doc.md](docs/design-doc.md)
+Full concept: [docs/gdd-v3.md](docs/gdd-v3.md) (the current design authority) · earlier passes: [gdd-v2](docs/gdd-v2.md), [design-doc](docs/design-doc.md)
 
 ## Play it
 
@@ -17,30 +17,27 @@ npm run dev      # → http://localhost:5173
 
 Built with Vite + TypeScript, no runtime dependencies. (The GDD calls for minimalist 2D vector art with code-driven juice — a DOM/CSS renderer fits that better than a 3D engine, and keeps the UI-heavy parts — grid inventory, cards, tooltips — trivial to iterate on.)
 
-## What's in the MVP
+## What's in the build
 
-The complete core loop from the GDD:
+The full GDD v3 loop:
 
-- **Inventory-based deckbuilding** — a 5×4 pack grid; equipped items grant cards (Simple Sword → 3× Strike, Fire Runestone → Fireball, …). No classes, just gear. Items rotate (press **R**), packed items can be picked up and moved, and a **tidy** button closes the gaps.
-- **The encumbrance system** — loot occupies grid space *and* adds Junk cards to your combat deck while carried. Drop loot mid-run if it's getting you killed — every junk card in combat names the item weighing you down.
-- **Smart packing** — taking loot auto-fits it, rearranging your whole pack if that's what it takes; when nothing helps, the offer becomes a discard picker: drop something (values shown), the loot packs itself.
-- **Dual-purpose items** — the Torch lights the road home (less corruption on the return trip), or can be played as *Searing Strike*… once.
-- **The 2/3–1/3 rule** — hire a Cleric, Soldier or Hound to fill out the back third of your deck; hire a Pack Mule for a bonus 3×3 grid at the cost of two *Cower in Fear* curses.
-- **Expeditions & backtracking** — pick the low-stakes Whispering Woods or the high-stakes Broken Tower, walk a node path out, then walk it back. Cleared nodes can **corrupt** into elite fights behind you.
-- **Day/night enrage timer** — every action ticks the clock. Night means harder enemies and much more corruption.
-- **Turn-based card combat** — energy, block, enemy intents, deck/discard cycling.
-- **Soft-fail extraction** — die and you lose everything you carried, but the village (and your gear) endures.
-- **Meta-progression** — bank gold/wood/stone, build the Blacksmith, Apothecary and Watchtower to unlock better gear and longer days. Saved in localStorage.
+- **Classless deckbuilding from a naked base deck** — everyone starts with 6 cards (2× Bash, 2× Block, 2× Focus). A 5×4 pack grid adds cards on top: Simple Sword → 3× Strike, Goblin Club → 2× Smash, Runestone of Fire → Fireball, … Items rotate (**R**), pick up and move, and a **tidy** button repacks.
+- **Badges as class modifiers** — one badge per run, and they *transform* rather than bloat: **Pyromancer** turns Bash into Firebolt (Burn), **Marksman** turns it into Shoot Arrow with an every-3rd-shot crit, **Devout** boosts all healing +50%.
+- **The fluid weight & encumbrance system** — every item has a weight; capacity is 100 (+40 with a mule). Cross 50% and 2× *Sluggish* (unplayable, retained, shrinks your hand) join the deck; 75% adds *Heavily Encumbered* (−2 energy on draw); 100% adds *Complete Exhaustion* (skip the turn). It's **fully fluid** — drop a chest or eat an apple mid-combat and those Burden cards leave the deck the same instant.
+- **Smart packing** — taking loot auto-fits it, rearranging the whole pack if needed; when nothing fits, a discard picker lets you drop something (weights/values shown) and the loot packs itself.
+- **Loot crates** — Ornate Boxes and Treasure Chests can't be opened in the field; haul their massive weight home and the **Blacksmith** cracks them for gold, essence, gear, or a new badge.
+- **The Dog & sidekicks** — build the **Kennel** and a dog joins every run free (Bite ×2 + Fetch, upgradable to Savage Bite with essence). Or hire a Cleric/Soldier; bring a Pack Mule for a 3×3 side-grid and +40 capacity at the cost of two *Cower in Fear* curses.
+- **Status effects** — Burn, Poison, Bleed, Blind, Weak on enemies; Sleep, Rooted, Corrosion on you. The **Frog** (Hypno-Toad, Stone-Frog, King Croak) and **Snail** (Acid-Spitter, Giant Snail) factions are built around them.
+- **Consumables** — aging Apples (Fresh → Ripe → Spoiled-and-throwable) and Bread; a Hunk of Meat you cook at a campfire and that leaves a Sharp Bone; potions, elixirs, vitality berries.
+- **Branching Slay-the-Spire map** — choose your route through the Whispering Woods, Broken Tower, or the frog-ruled Sunken Fen. The Watchtower scouts node types; campfires rest and tend food.
+- **Nightfall extraction** — reach the bottom (or turn back early) and **day turns to night**; pick your way home as cleared nodes corrupt into harder fights behind you. Torch lit = less corruption.
+- **Village raids** — haul too much heat home and raiders hit the gate: a 2–3 wave fight where your deck is supplemented by **Town Cards** (Catapult, Militia, Field Dressing, Loose the Hounds) from your buildings. Lose and a building is *ruined* (repairable), never your progression.
+- **Meta-progression** — bank gold/wood/stone/essence; build the Blacksmith, Apothecary (with a potion shop), Watchtower and Kennel; sell surplus gear. Saved in localStorage.
 
-### Not yet (roadmap — see [docs/gdd-v2.md](docs/gdd-v2.md))
+### Roadmap
 
-- **Active Burden cards** — loot you can play in desperation (throw the coins, hide behind the chest) at the cost of its extraction value
-- **The Dog familiar** — a permanent companion providing the 1/3 utility deck, upgraded at the Kennel
-- **Badges as class modifiers** — Devout / Marksman / Apprentice transform your basic cards instead of adding new ones
-- Status effects (Poison, Rooted, Corrosion, Sticky, Bleed…) and the debuff-heavy Frog & Snail factions
-- Aging consumables (Apple → Spoiled, Bread → Moldy) and transforming ones (Meat → Sharp Bone)
-- Village **Raid** events (3-wave tower defense with Town Cards) and building ruin/repair
-- Multi-enemy fights, branching hex world map, true tetromino shapes, audio
+- Active Burden cards (throw the coins / hide behind the chest for a one-time effect at the cost of extraction value)
+- Multi-enemy fights, true tetromino item shapes, audio
 
 ## Art pipeline
 

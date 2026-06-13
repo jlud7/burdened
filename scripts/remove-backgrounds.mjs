@@ -15,7 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const artDir = resolve(root, 'public/art');
 
 // scenes whose backgrounds ARE the picture
-const KEEP_BACKGROUND = new Set(['dest_woods', 'dest_dungeon', 'summary_home', 'summary_lost']);
+const KEEP_BACKGROUND = new Set(['dest_woods', 'dest_dungeon', 'dest_swamp', 'scene_raid', 'summary_home', 'summary_lost']);
 
 // minimal .env loader (no deps)
 try {

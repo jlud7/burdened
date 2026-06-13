@@ -174,12 +174,18 @@ body.phase-night .offer { background: #d8d0bc; }
 
 .hp-row { max-width: 420px; margin: 0 auto 10px; }
 
-.track {
-  display: flex; align-items: center; justify-content: center; gap: 0;
-  margin: 6px 0 18px; flex-wrap: wrap;
-}
+/* branching node map (GDD v3 §4) */
+.track-scroll { display: flex; overflow-x: auto; margin: 6px 0 16px; padding: 4px 8px; }
+.mapwrap { position: relative; flex: none; margin: 0 auto; } /* auto margins center without clipping when scrolling */
+.mapwrap svg { position: absolute; inset: 0; }
+.map-line { stroke: #00000030; stroke-width: 4; stroke-linecap: round; }
+.line-open { stroke: var(--ink); stroke-dasharray: 7 6; animation: march 0.9s linear infinite; }
+@keyframes march { to { stroke-dashoffset: -13; } }
+body.phase-night .map-line { stroke: #f3ead220; }
+body.phase-night .line-open { stroke: #d8d0bc; }
+
 .node {
-  width: 46px; height: 46px; border-radius: 50%; flex: none;
+  position: absolute; width: 46px; height: 46px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 19px;
   background: var(--panel); border: 2.5px solid var(--ink); box-shadow: 2px 2px 0 #00000022;
   transition: transform 0.15s ease;
@@ -187,9 +193,15 @@ body.phase-night .offer { background: #d8d0bc; }
 .node.here { transform: scale(1.25); background: var(--gold); z-index: 2; }
 .node.cleared { opacity: 0.6; }
 .node.corrupted { background: var(--red); color: var(--panel); opacity: 1; animation: pulse 1.2s infinite; }
+.node.fogged { color: var(--ink-soft); background: #cfc6ad; }
+.node.reachable {
+  cursor: pointer; border-color: var(--green);
+  box-shadow: 0 0 0 4px #7a845055, 2px 2px 0 #00000022; animation: beckon 1.4s ease-in-out infinite;
+}
+.node.reachable:hover { transform: scale(1.18); }
+@keyframes beckon { 0%, 100% { box-shadow: 0 0 0 3px #7a845044, 2px 2px 0 #00000022; } 50% { box-shadow: 0 0 0 7px #7a845066, 2px 2px 0 #00000022; } }
 .node-village { border-radius: 10px; font-size: 22px; }
-.track-line { width: 34px; height: 4px; background: #00000033; border-radius: 2px; }
-.track-line.walked { background: var(--ink); }
+.btn-big-step { font-size: 16px; animation: pulse 1.4s infinite; }
 
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 
@@ -391,3 +403,89 @@ body.phase-night .combatant-label, body.phase-night .battlefield .block-chip { c
 
 .kbd-hint { font-size: 11px; color: var(--ink-soft); text-align: center; font-style: italic; }
 .map-deck { min-width: min(560px, 92vw); max-width: 640px; }
+
+/* ---------- the weight bar (GDD v3 §3) ---------- */
+
+.wt-wrap { margin: 8px auto 4px; max-width: 420px; }
+.wt-compact { margin: 4px auto 0; max-width: 300px; }
+.wt-bar {
+  position: relative; height: 16px; border: 2px solid var(--ink); border-radius: 10px;
+  background: #00000022; overflow: hidden;
+}
+.wt-compact .wt-bar { height: 13px; }
+.wt-fill { height: 100%; background: var(--green); transition: width 0.3s ease, background 0.3s ease; }
+.wt-enc .wt-fill { background: var(--gold); }
+.wt-heavy .wt-fill { background: #b8703a; }
+.wt-over .wt-fill { background: var(--red); animation: pulse 1s infinite; }
+.wt-tick { position: absolute; top: 0; bottom: 0; width: 2px; background: #00000055; }
+.wt-label {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: bold; color: var(--ink); text-shadow: 0 1px 0 #ffffff55;
+}
+.wt-pip {
+  position: absolute; bottom: 1px; right: 4px; font-size: 9.5px; font-weight: bold;
+  color: var(--ink-soft); background: #ffffff88; border-radius: 8px; padding: 0 4px;
+}
+
+/* ---------- statuses ---------- */
+
+.status-row { display: flex; gap: 4px; justify-content: center; min-height: 20px; margin: 2px 0; }
+.status-chip {
+  font-size: 11.5px; font-weight: bold; background: var(--panel); border: 1.5px solid var(--ink);
+  border-radius: 12px; padding: 0 7px; box-shadow: 1px 1px 0 #00000022;
+}
+.status-burn { background: #e8c4a8; }
+.status-poison, .status-corrosion { background: #cfd8a8; }
+.status-bleed { background: #e8b4a8; }
+.status-blind, .status-sleep { background: #c4c4d8; }
+.ft-status { color: #6f5b9a; font-size: 18px; }
+.ft-crit { color: var(--gold); font-size: 30px; text-shadow: 0 2px 0 #00000055; }
+.intent-debuff { background: #6f5b9a; color: #f3ead2; }
+
+/* ---------- burden cards & exhaustion ---------- */
+
+.card-burden { background: #c9bfae; color: #00000088; cursor: not-allowed; }
+.card-burden .card-art { opacity: 0.6; filter: saturate(0.35); }
+.card-burden .card-cost { background: #8a7a66; }
+.card-burden .card-name { background: #d8cfc0; }
+.exhausted-banner {
+  text-align: center; font-weight: bold; color: var(--red); letter-spacing: 1px;
+  background: #a04b3b1a; border: 2px dashed var(--red); border-radius: var(--radius);
+  padding: 6px 12px; animation: pop-in 0.2s ease;
+}
+
+/* ---------- raids ---------- */
+
+.raid-banner {
+  text-align: center; font-weight: bold; letter-spacing: 3px; font-size: 15px;
+  color: #f3ead2; background: var(--red); border: 2.5px solid var(--ink); border-radius: var(--radius);
+  padding: 5px 12px; margin-bottom: 8px; animation: pulse 1.6s infinite;
+}
+.raid-result { border: 2px solid var(--ink); border-radius: var(--radius); padding: 8px 14px; margin: 12px 0; }
+.raid-won { background: #7a845022; }
+.raid-lost { background: #a04b3b1c; }
+
+/* ---------- in-combat pack ---------- */
+
+.cpack { max-width: 560px; margin: 0 auto; }
+.cpack-list { display: flex; flex-direction: column; gap: 5px; max-height: 230px; overflow-y: auto; }
+.cpack-item {
+  display: flex; align-items: center; gap: 8px; text-align: left;
+  font-family: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer;
+  background: #00000008; border: 2px solid transparent; border-radius: var(--radius); padding: 3px 8px;
+}
+.cpack-item:hover:not(.static) { border-color: var(--ink-soft); }
+.cpack-item.static { cursor: default; opacity: 0.7; }
+.cpack-confirm { background: #a04b3b14; border: 2px dashed var(--red); animation: pop-in 0.15s ease; }
+
+/* ---------- village: stash rows, crates, ruins ---------- */
+
+.stash-row { display: flex; align-items: center; gap: 6px; }
+.stash-row .stash-item { flex: 1; }
+.sell-wrap { flex: none; }
+.crate-note { background: #c9a23f22; border: 2px dashed var(--gold); border-radius: var(--radius); padding: 6px 10px; font-size: 14px; }
+.badge-ruined { font-size: 12px; font-weight: bold; color: var(--red); text-transform: uppercase; letter-spacing: 1px; }
+.building.ruined { background: #a04b3b14; border: 1.5px dashed var(--red); }
+.grid-item.badge { background: #d9c98a; }
+.grid-item.consumable { background: #d3dcb8; border-style: dotted; }
+.grid-item.crate { background: #cbb8d3; border-style: double; }

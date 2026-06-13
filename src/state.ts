@@ -1,8 +1,11 @@
-import type { GameState, ItemInstance, Expedition, MapNode, NodeType, TimePhase, CombatCard } from './types';
+import type { GameState, ItemInstance, Expedition, MapNode, NodeType, TimePhase, CombatCard, ConsumableStage } from './types';
 import {
-  ITEMS, CARDS, SIDEKICKS, DESTINATIONS, BUILDINGS,
+  ITEMS, CARDS, SIDEKICKS, DESTINATIONS, BUILDINGS, BASE_DECK, DOG_CARDS,
   PACK_GRID, MULE_GRID, MULE_CURSES,
-  BASE_DAY_TICKS, DUSK_TICKS, CORRUPTION_DAY, CORRUPTION_NIGHT, TORCH_CORRUPTION_BONUS,
+  MAX_WEIGHT, MULE_WEIGHT_BONUS, WEIGHT_TIERS, BURDEN_COPIES,
+  CORRUPTION_NIGHT, TORCH_CORRUPTION_BONUS,
+  RAID_CHANCE_PER_HEAT, RAID_CHANCE_CAP,
+  CRATE_TABLES, CRATE_BADGES,
   STARTING_STASH, STARTING_GOLD, MAX_HP,
 } from './data';
 
@@ -15,8 +18,10 @@ export function newGame(): GameState {
     screen: 'village',
     hp: MAX_HP,
     maxHp: MAX_HP,
-    resources: { gold: STARTING_GOLD, wood: 0, stone: 0 },
+    resources: { gold: STARTING_GOLD, wood: 0, stone: 0, essence: 0 },
     buildings: {},
+    ruined: [],
+    kennelLevel: 1,
     items: [],
     nextUid: 1,
     expedition: null,
@@ -37,6 +42,8 @@ export function save() {
   const data = {
     resources: G.resources,
     buildings: G.buildings,
+    ruined: G.ruined,
+    kennelLevel: G.kennelLevel,
     items: G.items,
     nextUid: G.nextUid,
     runsCompleted: G.runsCompleted,
@@ -50,9 +57,12 @@ export function load(): boolean {
     if (!raw) return false;
     const data = JSON.parse(raw);
     G = newGame();
-    G.resources = data.resources;
+    G.resources = { essence: 0, ...data.resources };
     G.buildings = data.buildings;
-    G.items = data.items;
+    G.ruined = data.ruined ?? [];
+    G.kennelLevel = data.kennelLevel ?? 1;
+    // drop any items whose defs no longer exist (saves from older builds)
+    G.items = (data.items as ItemInstance[]).filter((i) => ITEMS[i.itemId]);
     G.nextUid = data.nextUid;
     G.runsCompleted = data.runsCompleted ?? 0;
     return true;
@@ -70,6 +80,10 @@ export function wipeSave() {
 
 export function rand(n: number): number {
   return Math.floor(Math.random() * n);
+}
+
+export function randRange(min: number, max: number): number {
+  return min + rand(max - min + 1);
 }
 
 export function pick<T>(arr: T[]): T {
@@ -108,14 +122,30 @@ export function findItem(uid: number): ItemInstance | undefined {
   return G.items.find((i) => i.uid === uid);
 }
 
+/** everything on the pack or mule */
+export function carried(): ItemInstance[] {
+  return G.items.filter((i) => i.grid !== 'stash');
+}
+
 /** effective footprint, accounting for rotation */
 export function dims(inst: ItemInstance): { w: number; h: number } {
   const def = ITEMS[inst.itemId];
   return inst.rot ? { w: def.h, h: def.w } : { w: def.w, h: def.h };
 }
 
+/** the one badge currently carried, if any (one per run — GDD v3 §2) */
+export function carriedBadge(): ItemInstance | undefined {
+  return carried().find((i) => ITEMS[i.itemId].kind === 'badge');
+}
+
 /** can `inst`'s item be placed with its top-left corner at (x, y) on `grid`? */
 export function fits(grid: 'pack' | 'mule', inst: ItemInstance, x: number, y: number): boolean {
+  const def = ITEMS[inst.itemId];
+  // only one badge may be worn per run
+  if (def.kind === 'badge') {
+    const other = carriedBadge();
+    if (other && other.uid !== inst.uid) return false;
+  }
   const d = dims(inst);
   const { w, h } = gridSize(grid);
   if (x < 0 || y < 0 || x + d.w > w || y + d.h > h) return false;
@@ -228,9 +258,9 @@ export function autoPlace(inst: ItemInstance): PlaceResult {
   return null;
 }
 
-/** loot currently being carried — the only things that can be dropped mid-run */
-export function carriedLoot(): ItemInstance[] {
-  return G.items.filter((i) => i.grid !== 'stash' && ITEMS[i.itemId].kind === 'loot');
+/** carried things that can be abandoned mid-run: loot, crates, consumables */
+export function droppable(): ItemInstance[] {
+  return carried().filter((i) => ITEMS[i.itemId].kind !== 'gear' && ITEMS[i.itemId].kind !== 'badge');
 }
 
 export function spawnItem(itemId: string): ItemInstance {
@@ -247,32 +277,88 @@ export function carryingLitTorch(): boolean {
   return G.items.some((i) => i.grid !== 'stash' && ITEMS[i.itemId].light);
 }
 
+// ---------- weight & the fluid encumbrance system (GDD v3 §3) ----------
+
+export function carriedWeight(): number {
+  return carried().reduce((s, i) => s + ITEMS[i.itemId].weight, 0);
+}
+
+export function weightCapacity(): number {
+  return MAX_WEIGHT + (G.expedition?.mule ? MULE_WEIGHT_BONUS : 0);
+}
+
+/** crossed tiers, lightest first */
+export function crossedTiers() {
+  const frac = carriedWeight() / weightCapacity();
+  return WEIGHT_TIERS.filter((t) => frac >= t.at);
+}
+
+export function loadLabel(): string {
+  const crossed = crossedTiers();
+  return crossed.length ? crossed[crossed.length - 1].label : 'Light';
+}
+
+/** burden card ids the deck must currently contain, with copy counts */
+export function requiredBurdens(): Record<string, number> {
+  const req: Record<string, number> = {};
+  for (const t of crossedTiers()) req[t.cardId] = BURDEN_COPIES;
+  return req;
+}
+
+// ---------- buildings ----------
+
+export function isBuilt(id: string): boolean {
+  return !!G.buildings[id] && !G.ruined.includes(id);
+}
+
+export function hasDog(): boolean {
+  return isBuilt('kennel');
+}
+
 // ---------- deck ----------
 
 let cardUid = 1;
 
-/** the full deck implied by the current grids + sidekick + mule, per the 2/3–1/3 rule */
-export function buildDeck(): CombatCard[] {
+function pushCard(deck: CombatCard[], defId: string, sourceUid?: number) {
+  deck.push({ uid: cardUid++, defId, sourceUid });
+}
+
+/**
+ * The full deck implied by the current state: naked base deck (badge-transformed),
+ * cards from gridded gear, the dog, the sidekick, mule curses, and the burden
+ * cards your current load injects. Raids swap burdens/hirelings for Town Cards.
+ */
+export function buildDeck(forRaid = false): CombatCard[] {
   const deck: CombatCard[] = [];
-  for (const inst of G.items) {
-    if (inst.grid === 'stash') continue;
+  // the naked base deck, run through the badge's transform
+  const badge = carriedBadge();
+  const transform = badge ? ITEMS[badge.itemId].badge?.transform ?? {} : {};
+  for (const cid of BASE_DECK) pushCard(deck, transform[cid] ?? cid, badge?.uid);
+  // gear cards
+  for (const inst of carried()) {
     const def = ITEMS[inst.itemId];
-    for (const cid of def.cards ?? []) {
-      deck.push({ uid: cardUid++, defId: cid, sourceUid: inst.uid });
-    }
-    for (let j = 0; j < (def.junk ?? 0); j++) {
-      deck.push({ uid: cardUid++, defId: 'junk', sourceUid: inst.uid });
-    }
+    for (const cid of def.cards ?? []) pushCard(deck, cid, inst.uid);
+  }
+  // the dog defends the road and the village alike
+  if (hasDog()) {
+    for (const cid of DOG_CARDS[G.kennelLevel] ?? DOG_CARDS[1]) pushCard(deck, cid);
   }
   const exp = G.expedition;
-  if (exp?.sidekickId) {
-    for (const cid of SIDEKICKS[exp.sidekickId].cards) {
-      deck.push({ uid: cardUid++, defId: cid });
+  if (!forRaid) {
+    if (exp?.sidekickId) {
+      for (const cid of SIDEKICKS[exp.sidekickId].cards) pushCard(deck, cid);
     }
-  }
-  if (exp?.mule) {
-    for (let j = 0; j < MULE_CURSES; j++) {
-      deck.push({ uid: cardUid++, defId: 'cower' });
+    if (exp?.mule) {
+      for (let j = 0; j < MULE_CURSES; j++) pushCard(deck, 'cower');
+    }
+    // the burden of the pack
+    for (const [cid, n] of Object.entries(requiredBurdens())) {
+      for (let j = 0; j < n; j++) pushCard(deck, cid);
+    }
+  } else {
+    // town cards from standing buildings
+    for (const b of Object.values(BUILDINGS)) {
+      if (isBuilt(b.id) && b.townCard) pushCard(deck, b.townCard);
     }
   }
   return deck;
@@ -281,76 +367,229 @@ export function buildDeck(): CombatCard[] {
 export function deckBreakdown() {
   const deck = buildDeck();
   const playable = deck.filter((c) => !CARDS[c.defId].unplayable).length;
-  return { total: deck.length, playable, junk: deck.length - playable };
+  return { total: deck.length, playable, burdens: deck.length - playable };
 }
 
-// ---------- clock ----------
+// ---------- healing (Devout badge) ----------
 
-export function dayLength(): number {
-  let ticks = BASE_DAY_TICKS;
-  for (const [id, built] of Object.entries(G.buildings)) {
-    if (built && BUILDINGS[id].daylight) ticks += BUILDINGS[id].daylight!;
+export function healMult(): number {
+  const badge = carriedBadge();
+  return badge ? ITEMS[badge.itemId].badge?.healMult ?? 1 : 1;
+}
+
+/** heal through the badge multiplier; returns the actual amount restored */
+export function healPlayer(n: number): number {
+  const amt = Math.ceil(n * healMult());
+  const before = G.hp;
+  G.hp = Math.min(G.maxHp, G.hp + amt);
+  return G.hp - before;
+}
+
+// ---------- consumables (GDD v3 §6) ----------
+
+const AGE_EVERY_DEFAULT = 2;
+
+export function stageOf(inst: ItemInstance): ConsumableStage | null {
+  const def = ITEMS[inst.itemId];
+  if (!def.stages) return null;
+  const per = def.ageEvery ?? AGE_EVERY_DEFAULT;
+  const idx = Math.min(Math.floor((inst.age ?? 0) / per), def.stages.length - 1);
+  return def.stages[idx];
+}
+
+/** display name with stage/cooked prefix: "Ripe Apple", "Raw Hunk of Meat" */
+export function displayName(inst: ItemInstance): string {
+  const def = ITEMS[inst.itemId];
+  const stage = stageOf(inst);
+  if (stage) return `${stage.name} ${def.name}`;
+  if (def.cookable) return `${inst.cooked ? 'Cooked' : 'Raw'} ${def.name}`;
+  return def.name;
+}
+
+/** food ages one step per battle survived */
+export function ageConsumables() {
+  for (const inst of carried()) {
+    if (ITEMS[inst.itemId].stages) inst.age = (inst.age ?? 0) + 1;
   }
-  return ticks;
 }
+
+export interface ConsumeResult {
+  ok: boolean;
+  msg: string;
+  /** spoiled food hurled at the enemy */
+  thrownPoison?: number;
+  /** energy gained (combat only) */
+  gainEnergy?: number;
+  /** block gained (combat only) */
+  block?: number;
+  /** item id spawned in the eaten item's place (Sharp Bone) */
+  transformedTo?: string;
+}
+
+/**
+ * Eat/drink/throw a carried consumable. Combat-only effects (energy, block,
+ * throwing) are surfaced in the result for the combat layer to apply.
+ */
+export function consume(uid: number, inCombat: boolean): ConsumeResult {
+  const inst = findItem(uid);
+  if (!inst || inst.grid === 'stash') return { ok: false, msg: 'Not carried.' };
+  const def = ITEMS[inst.itemId];
+  if (def.kind !== 'consumable') return { ok: false, msg: 'Not edible.' };
+
+  const stage = stageOf(inst);
+  if (stage?.throwPoison) {
+    if (!inCombat) return { ok: false, msg: `The ${def.name.toLowerCase()} is ${stage.name.toLowerCase()} — only good for throwing at something.` };
+    destroyItem(uid);
+    return { ok: true, msg: `You hurl the ${stage.name.toLowerCase()} ${def.name.toLowerCase()}!`, thrownPoison: stage.throwPoison };
+  }
+
+  const parts: string[] = [];
+  const result: ConsumeResult = { ok: true, msg: '' };
+  const healBase = stage ? stage.heal ?? 0 : def.cookable ? (inst.cooked ? def.heal ?? 0 : def.rawHeal ?? 0) : def.heal ?? 0;
+  if (healBase) {
+    const healed = healPlayer(healBase);
+    parts.push(`+${healed} HP`);
+  }
+  if (def.maxHpBonus) {
+    G.maxHp += def.maxHpBonus;
+    G.hp += def.maxHpBonus;
+    parts.push(`+${def.maxHpBonus} max HP`);
+  }
+  if (inCombat && stage?.gainEnergy) {
+    result.gainEnergy = stage.gainEnergy;
+    parts.push(`+${stage.gainEnergy} energy`);
+  }
+  if (inCombat && stage?.block) {
+    result.block = stage.block;
+    parts.push(`+${stage.block} block`);
+  }
+  if (def.clearStatuses && G.combat) {
+    G.combat.playerStatuses = {};
+    parts.push('debuffs cleared');
+  }
+
+  destroyItem(uid);
+  if (def.transformTo) {
+    const bone = spawnItem(def.transformTo);
+    if (!autoPlace(bone)) unequip(bone); // shouldn't happen (smaller than what it replaced)
+    result.transformedTo = def.transformTo;
+    parts.push(`a ${ITEMS[def.transformTo].name} remains`);
+  }
+  result.msg = `${displayNameFromDef(def.id, inst)} eaten: ${parts.join(', ') || 'nothing much'}.`;
+  return result;
+}
+
+function displayNameFromDef(itemId: string, inst: ItemInstance): string {
+  const def = ITEMS[itemId];
+  const stage = stageOf(inst);
+  if (stage) return `${stage.name} ${def.name}`;
+  if (def.cookable) return `${inst.cooked ? 'Cooked' : 'Raw'} ${def.name}`;
+  return def.name;
+}
+
+// ---------- time: day out, dusk at the bottom, night home (GDD v3 §4) ----------
 
 export function timePhase(): TimePhase {
-  const t = G.expedition?.ticks ?? 0;
-  const day = dayLength();
-  if (t < day) return 'day';
-  if (t < day + DUSK_TICKS) return 'dusk';
-  return 'night';
+  const exp = G.expedition;
+  if (!exp) return 'day';
+  if (exp.returning) return 'night';
+  const node = exp.pos >= 0 ? exp.nodes[exp.pos] : null;
+  if (node && node.col === exp.cols - 1) return 'dusk';
+  return 'day';
 }
 
 export function isNight(): boolean {
   return timePhase() === 'night';
 }
 
-/** ticks until the next phase change (null at night — it doesn't get worse) */
-export function nextPhaseIn(): number | null {
-  const t = G.expedition?.ticks ?? 0;
-  const day = dayLength();
-  if (t < day) return day - t;
-  if (t < day + DUSK_TICKS) return day + DUSK_TICKS - t;
-  return null;
-}
-
-export function tick(n = 1) {
-  if (G.expedition) G.expedition.ticks += n;
-}
-
 export function corruptionChance(): number {
-  let c = isNight() ? CORRUPTION_NIGHT : CORRUPTION_DAY;
+  let c = CORRUPTION_NIGHT;
   if (carryingLitTorch()) c -= TORCH_CORRUPTION_BONUS;
   return Math.max(0.05, c);
 }
 
-// ---------- expedition ----------
+// ---------- expedition: branching node map (GDD v3 §4) ----------
 
 export function generateExpedition(destId: string, sidekickId: string | null, mule: boolean): Expedition {
   const dest = DESTINATIONS[destId];
-  const nodes: MapNode[] = [];
+  const cols = dest.length;
   const entries = Object.entries(dest.weights) as [NodeType, number][];
-  for (let i = 0; i < dest.length; i++) {
-    let type: NodeType;
-    if (i === dest.length - 1 && dest.finale) {
-      type = dest.finale;
-    } else {
-      type = weightedPick(entries.map(([t, w]) => ({ t, weight: w }))).t;
+  const rows: number[] = [];
+  for (let c = 0; c < cols; c++) {
+    rows.push(c === cols - 1 ? 1 : c === 0 ? 2 : 2 + rand(2)); // 2..3 wide, single finale
+  }
+  const nodes: MapNode[] = [];
+  const colNodes: MapNode[][] = [];
+  let id = 0;
+  for (let c = 0; c < cols; c++) {
+    const list: MapNode[] = [];
+    for (let r = 0; r < rows[c]; r++) {
+      let type: NodeType;
+      if (c === cols - 1 && dest.finale) {
+        type = dest.finale;
+      } else {
+        type = weightedPick(entries.map(([t, w]) => ({ t, weight: w }))).t;
+        if (c === 0 && type === 'elite') type = 'combat'; // no elites on the doorstep
+      }
+      const node: MapNode = { id: id++, col: c, row: r, type, cleared: false, corrupted: false, next: [] };
+      nodes.push(node);
+      list.push(node);
     }
-    nodes.push({ type, cleared: false, corrupted: false });
+    colNodes.push(list);
+  }
+  // non-crossing edge windows guaranteeing every node is reachable both ways
+  for (let c = 0; c < cols - 1; c++) {
+    const a = colNodes[c].length;
+    const b = colNodes[c + 1].length;
+    for (let j = 0; j < a; j++) {
+      const lo = Math.floor((j * b) / a);
+      const hi = Math.min(Math.floor(((j + 1) * b) / a), b - 1);
+      for (let k = lo; k <= hi; k++) colNodes[c][j].next.push(colNodes[c + 1][k].id);
+    }
   }
   return {
     destId,
     nodes,
+    cols,
     pos: -1,
     returning: false,
-    ticks: 0,
     lootedUids: [],
     mule,
     sidekickId,
-    pendingNode: null,
+    heat: 0,
   };
+}
+
+export function nodeById(id: number): MapNode {
+  return G.expedition!.nodes[id];
+}
+
+/** nodes the player can step to right now */
+export function reachable(): MapNode[] {
+  const exp = G.expedition!;
+  if (!exp.returning) {
+    if (exp.pos === -1) return exp.nodes.filter((n) => n.col === 0);
+    return nodeById(exp.pos).next.map(nodeById);
+  }
+  // homeward: any previous-column node that connects to where you stand
+  if (exp.pos === -1) return [];
+  const cur = nodeById(exp.pos);
+  if (cur.col === 0) return []; // next step is the village gate
+  return exp.nodes.filter((n) => n.col === cur.col - 1 && n.next.includes(cur.id));
+}
+
+/** is this node's type visible? (adjacent-reachable, cleared, scouted, or already entered) */
+export function nodeKnown(node: MapNode): boolean {
+  if (isBuilt('watchtower')) return true;
+  if (node.cleared || node.corrupted) return true;
+  const exp = G.expedition!;
+  if (node.col === 0) return true;
+  if (exp.pos >= 0) {
+    const cur = nodeById(exp.pos);
+    if (node.col <= cur.col) return true;
+    if (cur.next.includes(node.id)) return true;
+  }
+  return false;
 }
 
 /** chance roll for a cleared node corrupting as you backtrack through it */
@@ -363,20 +602,31 @@ export function maybeCorrupt(node: MapNode): boolean {
   return false;
 }
 
-/** tally carried loot by name, for the run summary */
+// ---------- extraction & death ----------
+
+/** tally carried loot+crates by name, for the run summary */
 function lootTally(): { name: string; n: number }[] {
   const counts = new Map<string, number>();
-  for (const inst of carriedLoot()) {
+  for (const inst of carried()) {
+    const kind = ITEMS[inst.itemId].kind;
+    if (kind !== 'loot' && kind !== 'crate') continue;
     const name = ITEMS[inst.itemId].name;
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   return [...counts.entries()].map(([name, n]) => ({ name, n }));
 }
 
-/** bank carried loot, return gear to stash-equipped state, end the run */
-export function extract() {
-  const gained = { gold: 0, wood: 0, stone: 0 };
+/**
+ * Bank carried loot, stash crates for the Blacksmith, end the run.
+ * Returns the raid heat if the haul dragged trouble home, else null —
+ * the caller starts the raid (GDD v3 §8).
+ */
+export function extract(): number | null {
+  const exp = G.expedition!;
+  const greedy = carriedWeight() / weightCapacity() >= 0.75;
+  const gained = { gold: 0, wood: 0, stone: 0, essence: 0 };
   const loot = lootTally();
+  let crates = 0;
   for (const inst of [...G.items]) {
     if (inst.grid === 'stash') continue;
     const def = ITEMS[inst.itemId];
@@ -384,7 +634,11 @@ export function extract() {
       gained.gold += def.gold ?? 0;
       gained.wood += def.wood ?? 0;
       gained.stone += def.stone ?? 0;
+      gained.essence += def.essence ?? 0;
       destroyItem(inst.uid);
+    } else if (def.kind === 'crate') {
+      crates++;
+      unequip(inst); // waits in the stash for the Blacksmith
     } else if (inst.grid === 'mule') {
       unequip(inst); // the mule goes home; gear it carried returns to the stash
     }
@@ -392,13 +646,22 @@ export function extract() {
   G.resources.gold += gained.gold;
   G.resources.wood += gained.wood;
   G.resources.stone += gained.stone;
-  G.lastRun = { survived: true, ...gained, nights: isNight(), loot };
+  G.resources.essence += gained.essence;
+  G.lastRun = { survived: true, ...gained, nights: true, loot, crates };
+  const heat = exp.heat + crates + (greedy ? 1 : 0);
   G.expedition = null;
   G.combat = null;
+  G.maxHp = MAX_HP; // berry bonuses end with the run
   G.hp = G.maxHp;
   G.runsCompleted++;
   G.screen = 'summary';
   save();
+  const anyBuilding = Object.values(BUILDINGS).some((b) => G.buildings[b.id]);
+  if (G.runsCompleted >= 2 && anyBuilding && heat > 0) {
+    const chance = Math.min(heat * RAID_CHANCE_PER_HEAT, RAID_CHANCE_CAP);
+    if (Math.random() < chance) return heat;
+  }
+  return null;
 }
 
 /** death: carried loot is gone, gear survives (kind to the player), village persists */
@@ -406,13 +669,89 @@ export function perish() {
   const loot = lootTally();
   for (const inst of [...G.items]) {
     if (inst.grid === 'stash') continue;
-    if (ITEMS[inst.itemId].kind === 'loot') destroyItem(inst.uid);
+    const kind = ITEMS[inst.itemId].kind;
+    if (kind === 'loot' || kind === 'crate' || kind === 'consumable') destroyItem(inst.uid);
     else unequip(inst);
   }
-  G.lastRun = { survived: false, gold: 0, wood: 0, stone: 0, nights: isNight(), loot };
+  G.lastRun = { survived: false, gold: 0, wood: 0, stone: 0, essence: 0, nights: isNight(), loot, crates: 0 };
   G.expedition = null;
   G.combat = null;
+  G.maxHp = MAX_HP;
   G.hp = G.maxHp;
   G.screen = 'summary';
   save();
+}
+
+// ---------- the village: crates, shop, kennel, repairs ----------
+
+export interface CrateOpening {
+  crateName: string;
+  msg: string;
+}
+
+/** the Blacksmith cracks open a stashed crate (GDD v3 §5) */
+export function openCrate(uid: number): CrateOpening | null {
+  const inst = findItem(uid);
+  if (!inst || inst.grid !== 'stash') return null;
+  const def = ITEMS[inst.itemId];
+  const table = CRATE_TABLES[inst.itemId];
+  if (def.kind !== 'crate' || !table || !isBuilt('blacksmith')) return null;
+  destroyItem(uid);
+  const roll = weightedPick(table);
+  let msg: string;
+  if (roll.kind === 'gold') {
+    const n = randRange(roll.min, roll.max);
+    G.resources.gold += n;
+    msg = `${n} gold inside!`;
+  } else if (roll.kind === 'essence') {
+    const n = randRange(roll.min, roll.max);
+    G.resources.essence += n;
+    msg = `${n} magic essence, humming softly.`;
+  } else if (roll.kind === 'badge') {
+    const owned = new Set(G.items.map((i) => i.itemId));
+    const fresh = CRATE_BADGES.filter((b) => !owned.has(b));
+    if (fresh.length) {
+      const id = pick(fresh);
+      spawnItem(id);
+      msg = `A ${ITEMS[id].name} — a new calling.`;
+    } else {
+      G.resources.gold += 40;
+      msg = 'A badge you already wear. The smith pays 40 gold for it.';
+    }
+  } else {
+    spawnItem(roll.itemId);
+    msg = `A ${ITEMS[roll.itemId].name}, good as new.`;
+  }
+  save();
+  return { crateName: def.name, msg };
+}
+
+/** sell a stashed item for its listed value */
+export function sellItem(uid: number): boolean {
+  const inst = findItem(uid);
+  if (!inst || inst.grid !== 'stash') return false;
+  const def = ITEMS[inst.itemId];
+  if (!def.value) return false;
+  G.resources.gold += def.value;
+  destroyItem(uid);
+  save();
+  return true;
+}
+
+export function repairCost(id: string): { gold: number; wood: number; stone: number } {
+  const b = BUILDINGS[id];
+  return { gold: Math.ceil(b.costGold / 2), wood: Math.ceil(b.costWood / 2), stone: Math.ceil(b.costStone / 2) };
+}
+
+export function repairBuilding(id: string): boolean {
+  if (!G.ruined.includes(id)) return false;
+  const c = repairCost(id);
+  const r = G.resources;
+  if (r.gold < c.gold || r.wood < c.wood || r.stone < c.stone) return false;
+  r.gold -= c.gold;
+  r.wood -= c.wood;
+  r.stone -= c.stone;
+  G.ruined = G.ruined.filter((x) => x !== id);
+  save();
+  return true;
 }

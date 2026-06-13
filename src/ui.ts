@@ -1,6 +1,6 @@
-import { CARDS, ITEMS } from './data';
+import { CARDS, ITEMS, WEIGHT_TIERS } from './data';
 import type { ItemDef } from './types';
-import { G, gridSize, itemsOn, fits, findItem, dims } from './state';
+import { G, gridSize, itemsOn, fits, findItem, dims, carriedWeight, weightCapacity, loadLabel, stageOf, displayName } from './state';
 import { art } from './art';
 
 // ---------- delegated actions ----------
@@ -70,7 +70,7 @@ function clearPreview() {
 
 export function renderGrid(
   grid: 'pack' | 'mule',
-  opts: { cellAction?: string; itemAction?: string; itemActionLootOnly?: boolean; selectedUid?: number | null } = {},
+  opts: { cellAction?: string; itemAction?: string; itemActionDroppableOnly?: boolean; selectedUid?: number | null } = {},
 ): string {
   const { w, h } = gridSize(grid);
   let cells = '';
@@ -85,25 +85,69 @@ export function renderGrid(
   for (const inst of itemsOn(grid)) {
     const def = ITEMS[inst.itemId];
     const d = dims(inst);
-    const clickable = opts.itemAction && (!opts.itemActionLootOnly || def.kind === 'loot');
+    const droppableKind = def.kind !== 'gear' && def.kind !== 'badge';
+    const clickable = opts.itemAction && (!opts.itemActionDroppableOnly || droppableKind);
     const act = clickable ? `data-action="${opts.itemAction}" data-arg="${inst.uid}"` : '';
-    const junkPips = def.junk ? `<span class="junk-pips">${'✦'.repeat(def.junk)}</span>` : '';
+    const stage = stageOf(inst);
+    const tip = `${displayName(inst)} — ${stage ? stage.desc : def.desc} (⚖${def.weight})`;
     const cls = `grid-item ${def.kind}${opts.selectedUid === inst.uid ? ' selected' : ''}${clickable ? '' : ' static'}`;
-    items += `<div class="${cls}" ${act} title="${def.name} — ${def.desc}"
+    items += `<div class="${cls}" ${act} title="${tip}"
       style="grid-column:${inst.x + 1} / span ${d.w};grid-row:${inst.y + 1} / span ${d.h}">
-      ${art(def.art)}${junkPips}</div>`;
+      ${art(def.art)}<span class="wt-pip">${def.weight}</span></div>`;
   }
   return `<div class="grid grid-${grid}" style="--cols:${w};--rows:${h}">${cells}${items}</div>`;
 }
 
-/** compact size / worth / junk chips for an item, used in offers and the discard picker */
+/** compact size / weight / worth chips for an item, used in offers and pickers */
 export function itemChips(def: ItemDef): string {
-  const bits = [`${def.w}×${def.h}`];
+  const bits = [`${def.w}×${def.h}`, `⚖${def.weight}`];
   if (def.gold) bits.push(`◉${def.gold}`);
   if (def.wood) bits.push(`▤${def.wood}`);
   if (def.stone) bits.push(`▲${def.stone}`);
-  if (def.junk) bits.push(`<span class="junk-text">${'✦'.repeat(def.junk)}</span>`);
+  if (def.essence) bits.push(`✦${def.essence}`);
+  if (def.kind === 'crate') bits.push('<span class="junk-text">unidentified</span>');
   return `<span class="chips-mini">${bits.map((b) => `<span class="mini">${b}</span>`).join('')}</span>`;
+}
+
+// ---------- the weight bar (GDD v3 §3) ----------
+
+export function weightBar(compact = false): string {
+  const wt = carriedWeight();
+  const cap = weightCapacity();
+  const pct = Math.min(100, Math.round((wt / cap) * 100));
+  const tier = loadLabel();
+  const ticks = WEIGHT_TIERS.map(
+    (t) => `<span class="wt-tick" style="left:${t.at * 100}%" title="${t.label} at ${t.at * 100}%"></span>`,
+  ).join('');
+  const tierCls = tier === 'Light' ? 'wt-light' : tier === 'Encumbered' ? 'wt-enc' : tier === 'Heavily Encumbered' ? 'wt-heavy' : 'wt-over';
+  return `<div class="wt-wrap ${tierCls}${compact ? ' wt-compact' : ''}" title="Carried weight. Crossing a mark injects Burden cards into your deck — drop or eat things to pull them back out.">
+    <div class="wt-bar"><div class="wt-fill" style="width:${pct}%"></div>${ticks}
+      <span class="wt-label">⚖ ${wt}/${cap}${compact ? '' : ` — ${tier}`}</span></div>
+  </div>`;
+}
+
+// ---------- statuses ----------
+
+const STATUS_INFO: Record<string, { icon: string; tip: string }> = {
+  burn: { icon: '🔥', tip: 'Burn: takes damage as it acts, then fades by 1.' },
+  poison: { icon: '☠', tip: 'Poison: takes damage as it acts, then fades by 1.' },
+  bleed: { icon: '🩸', tip: 'Bleed: takes damage when it attacks, then fades by 1.' },
+  blind: { icon: '✸', tip: 'Blind: its next attack misses.' },
+  weak: { icon: '↓', tip: 'Weakened: its next attack is reduced.' },
+  sleep: { icon: '💤', tip: 'Drowsy: you start next turn with less energy.' },
+  rooted: { icon: '🌿', tip: 'Rooted: you draw fewer cards next turn.' },
+  corrosion: { icon: '🧪', tip: 'Corrosion: your Block gains are halved. Fades each turn.' },
+};
+
+export function statusChips(statuses: Partial<Record<string, number>>): string {
+  const chips = Object.entries(statuses)
+    .filter(([, v]) => (v ?? 0) > 0)
+    .map(([k, v]) => {
+      const info = STATUS_INFO[k] ?? { icon: k, tip: k };
+      return `<span class="status-chip status-${k}" title="${info.tip}">${info.icon}${v}</span>`;
+    })
+    .join('');
+  return chips ? `<div class="status-row">${chips}</div>` : '<div class="status-row"></div>';
 }
 
 // ---------- cards ----------
@@ -139,7 +183,8 @@ export function resourceBar(): string {
   const r = G.resources;
   return `<span class="res res-gold">◉ ${r.gold}</span>
     <span class="res res-wood">▤ ${r.wood}</span>
-    <span class="res res-stone">▲ ${r.stone}</span>`;
+    <span class="res res-stone">▲ ${r.stone}</span>
+    <span class="res res-essence" title="Magic essence — the Kennel trains with it">✦ ${r.essence}</span>`;
 }
 
 export function hpBar(hp: number, max: number, block = 0): string {

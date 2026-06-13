@@ -1,6 +1,12 @@
-import { DESTINATIONS, SIDEKICKS, MULE_COST, ITEMS } from './data';
-import { G, generateExpedition, tick, isNight, pick, weightedPick, maybeCorrupt, extract, spawnItem, autoPlace, destroyItem, perish, save } from './state';
+import { DESTINATIONS, SIDEKICKS, MULE_COST, ITEMS, ENEMIES } from './data';
+import {
+  G, generateExpedition, isNight, pick, weightedPick, maybeCorrupt, extract,
+  spawnItem, autoPlace, destroyItem, perish, save, nodeById, reachable,
+  consume, healPlayer, ageConsumables, carried,
+} from './state';
+import type { MapNode } from './types';
 import { startCombat } from './combat';
+import { startRaid } from './raid';
 import { rerender } from './router';
 
 export interface LootEntry {
@@ -37,52 +43,73 @@ export function embark(destId: string, sidekickId: string | null, mule: boolean)
   noteText = null;
   packOpen = false;
   pendingDropUid = null;
+  currentEvent = null;
+  campfireTending = false;
   G.screen = 'map';
   save(); // persists nothing mid-run, but locks in the gold spend if they refresh
-  pressOn();
+  rerender();
 }
 
-export function currentNode() {
+export function currentNode(): MapNode | null {
   const exp = G.expedition!;
-  return exp.pos >= 0 ? exp.nodes[exp.pos] : null;
+  return exp.pos >= 0 ? nodeById(exp.pos) : null;
 }
 
-export function pressOn() {
+/** the current node no longer demands anything — travel is open */
+export function nodeResolved(): boolean {
+  const node = currentNode();
+  return !node || node.cleared || node.corrupted;
+}
+
+/** step to a connected node (out by day, back by night) */
+export function moveTo(nodeId: number) {
   const exp = G.expedition!;
-  if (exp.returning || exp.pos >= exp.nodes.length - 1 && exp.pos !== -1) return;
-  exp.pos++;
-  tick(1);
+  if (!nodeResolved() || currentOffer) return;
+  if (!reachable().some((n) => n.id === nodeId)) return;
+  exp.pos = nodeId;
   noteText = null;
-  const node = exp.nodes[exp.pos];
-  if (!node.cleared && (node.type === 'combat' || node.type === 'elite')) {
-    fightNode(node.type === 'elite');
+  currentEvent = null;
+  campfireTending = false;
+  const node = nodeById(nodeId);
+
+  if (exp.returning && node.cleared) {
+    if (maybeCorrupt(node)) {
+      noteText = 'Something followed you in the dark. The path you cleared has turned.';
+      fightNode({ corrupted: true });
+    } else {
+      noteText = 'You slip back through in the dark. Nothing stirs — this time.';
+    }
+  } else if (!node.cleared && (node.type === 'combat' || node.type === 'elite')) {
+    fightNode({ elite: node.type === 'elite' });
   }
   rerender();
+}
+
+/** flip day to night the moment there's nothing deeper to walk toward */
+function maybeNightfall() {
+  const exp = G.expedition!;
+  if (exp.returning) return;
+  const node = currentNode();
+  if (node && node.col === exp.cols - 1 && node.cleared) {
+    exp.returning = true;
+    noteText = 'This is as deep as the path goes. Night falls — time to carry it all home.';
+  }
 }
 
 export function turnBack() {
   const exp = G.expedition!;
   exp.returning = true;
-  moveBack();
+  noteText = 'You turn for home, and the light dies behind you. Night falls.';
+  rerender();
 }
 
-export function moveBack() {
+/** the last step: from a first-column node into the village */
+export function stepHome() {
   const exp = G.expedition!;
-  exp.pos--;
-  tick(1);
-  noteText = null;
-  if (exp.pos < 0) {
-    extract();
-    rerender();
-    return;
-  }
-  const node = exp.nodes[exp.pos];
-  if (maybeCorrupt(node)) {
-    noteText = isNight()
-      ? 'Something followed you in the dark. The path you cleared has turned.'
-      : 'The path you cleared has corrupted behind you.';
-    fightNode(true, true);
-  }
+  const node = currentNode();
+  if (!exp.returning || !node || node.col !== 0 || !nodeResolved()) return;
+  const heat = extract();
+  if (heat != null) startRaid(heat);
   rerender();
 }
 
@@ -92,79 +119,230 @@ function destDef() {
   return DESTINATIONS[G.expedition!.destId];
 }
 
-function fightNode(elite: boolean, corrupted = false) {
+function fightNode(opts: { elite?: boolean; corrupted?: boolean } = {}) {
   const dest = destDef();
   const exp = G.expedition!;
-  const node = exp.nodes[exp.pos];
-  const enemyId = elite ? pick(dest.elites) : pick(isNight() ? dest.nightEnemies : dest.enemies);
-  tick(1);
+  const node = currentNode()!;
+  let enemyId: string;
+  if (opts.elite) {
+    enemyId = node.col === exp.cols - 1 && dest.finaleBoss ? dest.finaleBoss : pick(dest.elites);
+  } else if (opts.corrupted || isNight()) {
+    enemyId = pick(dest.nightEnemies);
+  } else {
+    enemyId = pick(dest.enemies);
+  }
   startCombat(enemyId, {
+    elite: opts.elite,
     onWin: () => {
       node.cleared = true;
       G.screen = 'map';
-      if (elite) {
-        openOffer(corrupted ? 'It dropped something heavy.' : 'Its hoard is yours.', [dest.eliteReward]);
+      ageConsumables(); // food ages by battles fought
+      const enemy = ENEMIES[enemyId];
+      const drops: string[] = [];
+      let title: string;
+      if (opts.elite) {
+        exp.heat += dest.finaleBoss === enemyId ? 2 : 1;
+        drops.push(dest.eliteReward);
+        title = 'Its hoard is yours — if you can carry it.';
+      } else if (opts.corrupted) {
+        drops.push('essence_vial');
+        title = 'The corruption disperses, leaving something behind.';
       } else {
-        openOffer('Spoils of the fight.', [weightedPick(dest.lootTable).itemId]);
+        drops.push(weightedPick(dest.lootTable).itemId);
+        title = 'Spoils of the fight.';
       }
+      if (enemy.drop && Math.random() < enemy.drop.chance) drops.push(enemy.drop.itemId);
+      if (enemy.essence && !opts.corrupted) drops.push('essence_vial');
+      openOffer(title, drops);
+      maybeNightfall();
     },
   });
 }
 
 export function gatherHere() {
-  const exp = G.expedition!;
-  const node = exp.nodes[exp.pos];
-  tick(1);
+  const node = currentNode()!;
   node.cleared = true;
   openOffer('You gather what you can.', [weightedPick(destDef().gatherTable).itemId]);
+  maybeNightfall();
   rerender();
 }
 
 export function openTreasure() {
-  const exp = G.expedition!;
-  const node = exp.nodes[exp.pos];
-  tick(1);
+  const node = currentNode()!;
   node.cleared = true;
   const t = destDef().lootTable;
   openOffer('A cache, half-buried.', [weightedPick(t).itemId, weightedPick(t).itemId]);
+  maybeNightfall();
   rerender();
 }
 
 export function skipNode() {
-  const exp = G.expedition!;
-  exp.nodes[exp.pos].cleared = true;
+  currentNode()!.cleared = true;
   noteText = 'You leave it be.';
+  currentEvent = null;
+  campfireTending = false;
+  maybeNightfall();
   rerender();
 }
 
-const EVENTS = [
+// ---------- "?" events: scenarios with choices (GDD v3 §4) ----------
+
+export interface EventChoice {
+  label: string;
+  hint?: string;
+  enabled?: () => boolean;
+  run: () => string;
+}
+export interface EventDef {
+  text: string;
+  choices: EventChoice[];
+}
+
+const runestones = ['fire_runestone', 'frost_runestone', 'dark_runestone'];
+
+const EVENTS: EventDef[] = [
   {
-    text: 'A forgotten shrine hums under the moss. You kneel for a moment.',
-    apply: () => { G.hp = Math.min(G.maxHp, G.hp + 8); return 'Healed 8 HP.'; },
+    text: 'A beggar huddles by the path, eyeing your pack. "Spare a bite, and I\'ll spare a secret."',
+    choices: [
+      {
+        label: 'Give an Apple',
+        hint: 'he trades you a runestone',
+        enabled: () => carried().some((i) => i.itemId === 'apple'),
+        run: () => {
+          const apple = carried().find((i) => i.itemId === 'apple')!;
+          destroyItem(apple.uid);
+          openOffer('He presses a cold stone into your hand.', [pick(runestones)]);
+          return 'He devours the apple, core and all.';
+        },
+      },
+      { label: 'Ignore him', run: () => 'He watches you go, saying nothing.' },
+    ],
+  },
+  {
+    text: 'A forgotten shrine hums under the moss. Coins glint in the offering bowl.',
+    choices: [
+      { label: 'Kneel a moment', hint: 'heal 8', run: () => `Warmth spreads through you. Healed ${healPlayer(8)} HP.` },
+      {
+        label: 'Pry out the offerings',
+        hint: 'take the coins',
+        run: () => {
+          openOffer('The shrine goes quiet.', ['coin_bag']);
+          return 'You feel watched all the same.';
+        },
+      },
+    ],
   },
   {
     text: 'A snare, hidden well. It bites your ankle before you cut free.',
-    apply: () => { G.hp -= 6; return 'Lost 6 HP.'; },
+    choices: [
+      {
+        label: 'Cut yourself loose',
+        run: () => {
+          G.hp -= 6;
+          return 'Lost 6 HP. The rope was new — someone hunts these woods.';
+        },
+      },
+    ],
   },
   {
-    text: 'A hollow stump, and inside — someone’s stash, long abandoned.',
-    apply: () => { openOffer('Finders keepers.', ['coin_bag']); return 'Found something.'; },
+    text: 'A hollow stump, and inside — someone\'s stash, long abandoned.',
+    choices: [
+      {
+        label: 'Take it',
+        run: () => {
+          openOffer('Finders keepers.', ['coin_bag']);
+          return 'Whoever hid it isn\'t coming back.';
+        },
+      },
+      { label: 'Leave it be', run: () => 'Maybe they\'ll return for it. Maybe.' },
+    ],
+  },
+  {
+    text: 'A peddler hurries the other way, half his wares abandoned. "Take it off my hands — ten gold, no questions."',
+    choices: [
+      {
+        label: 'Pay 10 gold',
+        hint: 'an unopened Ornate Box',
+        enabled: () => G.resources.gold >= 10,
+        run: () => {
+          G.resources.gold -= 10;
+          openOffer('He doesn\'t look back.', ['ornate_box']);
+          return 'No questions, then. It\'s heavy.';
+        },
+      },
+      { label: 'Wave him on', run: () => 'Whatever he\'s running from, you\'re walking toward it.' },
+    ],
   },
 ];
 
+export let currentEvent: EventDef | null = null;
+
 export function investigate() {
-  const exp = G.expedition!;
-  const node = exp.nodes[exp.pos];
-  tick(1);
+  currentEvent = pick(EVENTS);
+  rerender();
+}
+
+export function chooseEvent(idx: number) {
+  if (!currentEvent) return;
+  const choice = currentEvent.choices[idx];
+  if (!choice || (choice.enabled && !choice.enabled())) return;
+  const node = currentNode()!;
   node.cleared = true;
-  const ev = pick(EVENTS);
-  const result = ev.apply();
+  const result = choice.run();
+  currentEvent = null;
   if (G.hp <= 0) {
     perish();
     rerender();
     return;
   }
-  noteText = `${ev.text}  ${result}`;
+  noteText = result;
+  maybeNightfall();
+  rerender();
+}
+
+// ---------- campfire: rest, or tend provisions (GDD v3 §4) ----------
+
+export let campfireTending = false;
+
+export function campRest() {
+  const node = currentNode()!;
+  node.cleared = true;
+  const healed = healPlayer(12);
+  noteText = `You sleep an hour by the embers. Healed ${healed} HP.`;
+  maybeNightfall();
+  rerender();
+}
+
+export function campTendList() {
+  campfireTending = true;
+  rerender();
+}
+
+/** items the campfire can improve: raw meat to cook, aging food to refresh */
+export function tendable() {
+  return carried().filter((i) => {
+    const def = ITEMS[i.itemId];
+    return (def.cookable && !i.cooked) || (def.stages && (i.age ?? 0) > 0);
+  });
+}
+
+export function campTend(uid: number) {
+  const inst = carried().find((i) => i.uid === uid);
+  if (!inst) return;
+  const def = ITEMS[inst.itemId];
+  const node = currentNode()!;
+  if (def.cookable && !inst.cooked) {
+    inst.cooked = true;
+    noteText = `The ${def.name.toLowerCase()} sizzles over the fire. Cooked!`;
+  } else if (def.stages) {
+    inst.age = 0;
+    noteText = `You trim and wrap the ${def.name.toLowerCase()}. Fresh as the day you found it.`;
+  } else {
+    return;
+  }
+  node.cleared = true;
+  campfireTending = false;
+  maybeNightfall();
   rerender();
 }
 
@@ -211,12 +389,21 @@ function maybeCloseOffer() {
   }
 }
 
-/** drop a carried loot item mid-run (gear can't be abandoned) */
+/** drop a carried item mid-run (gear and badges can't be abandoned) */
 export function dropLoot(uid: number) {
   const inst = G.items.find((i) => i.uid === uid);
   if (!inst || inst.grid === 'stash') return;
-  if (ITEMS[inst.itemId].kind !== 'loot') return;
+  const kind = ITEMS[inst.itemId].kind;
+  if (kind === 'gear' || kind === 'badge') return;
   destroyItem(uid);
+  if (pendingDropUid === uid) pendingDropUid = null;
+  rerender();
+}
+
+/** eat/drink something from the pack while on the road */
+export function mapConsume(uid: number) {
+  const res = consume(uid, false);
+  noteText = res.msg;
   if (pendingDropUid === uid) pendingDropUid = null;
   rerender();
 }
@@ -224,7 +411,9 @@ export function dropLoot(uid: number) {
 /** drop something to make room, then immediately retry the blocked offer entry */
 export function dropAndRetry(entryIdx: number, uid: number) {
   const inst = G.items.find((i) => i.uid === uid);
-  if (!inst || inst.grid === 'stash' || ITEMS[inst.itemId].kind !== 'loot') return;
+  if (!inst || inst.grid === 'stash') return;
+  const kind = ITEMS[inst.itemId].kind;
+  if (kind === 'gear' || kind === 'badge') return;
   destroyItem(uid);
   if (pendingDropUid === uid) pendingDropUid = null;
   retryLoot(entryIdx);

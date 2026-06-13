@@ -1,4 +1,9 @@
-# Wanderer's Burden — GDD v2 (June 2026)
+# Wanderer's Burden — GDD v2 (June 2026) — SUPERSEDED
+
+> **Superseded by [gdd-v3.md](gdd-v3.md)** (the capture of
+> `Wanderers_Burden_GDD_v2.docx`, chronologically the third design doc).
+> Kept for ideas v3 doesn't restate: active Burden loot cards, dual-purpose
+> Torch, King Croak's loot-throwing, the full status list.
 
 Markdown capture of `Wanderers_Burden_GDD.docx` (kept out of the repo). This
 supersedes [design-doc.md](design-doc.md) where they differ; the live game
