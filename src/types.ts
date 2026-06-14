@@ -143,6 +143,8 @@ export interface SidekickDef {
   cost: number;
   desc: string;
   art: string;
+  /** combat HP when fielded as a unit (GDD v4 §7) */
+  hp: number;
   cards: string[];
 }
 
@@ -213,17 +215,38 @@ export interface CombatCard {
   defId: string;
   /** uid of the granting item, for breaksItem */
   sourceUid?: number;
+  /** contributed by the companion unit — pulled if it's incapacitated (GDD v4 §4.3) */
+  companion?: boolean;
+}
+
+export interface EnemyInstance {
+  enemyId: string;
+  hp: number;
+  maxHp: number;
+  block: number;
+  patternIdx: number;
+  /** night/corruption attack bonus (flat), added on top of the move's attack */
+  atkBonus: number;
+  statuses: Partial<Record<EnemyStatus, number>>;
+  /** this turn's intent is aimed at the companion instead of the Boy (GDD v4 §4.1) */
+  targetCompanion: boolean;
+}
+
+/** a hired sidekick or the dog, fighting as a unit with its own HP (GDD v4 §4.3) */
+export interface CompanionState {
+  id: string;
+  name: string;
+  art: string;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
 }
 
 export interface CombatState {
-  enemyId: string;
-  enemyHp: number;
-  enemyMaxHp: number;
-  enemyBlock: number;
-  patternIdx: number;
-  /** night/corruption multiplier already applied to hp; applied to attacks via this */
-  enemyAtkBonus: number;
-  enemyStatuses: Partial<Record<EnemyStatus, number>>;
+  enemies: EnemyInstance[];
+  /** index of the currently targeted living enemy */
+  focus: number;
+  companion: CompanionState | null;
   playerStatuses: Partial<Record<PlayerStatus, number>>;
   draw: CombatCard[];
   hand: CombatCard[];

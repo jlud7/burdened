@@ -1,6 +1,6 @@
 import { DESTINATIONS, SIDEKICKS, MULE_COST, ITEMS, ENEMIES } from './data';
 import {
-  G, generateExpedition, isNight, pick, weightedPick, maybeCorrupt, extract,
+  G, generateExpedition, isNight, pick, rand, randRange, weightedPick, maybeCorrupt, extract,
   spawnItem, autoPlace, destroyItem, perish, save, nodeById, reachable,
   consume, healPlayer, ageConsumables, carried,
 } from './state';
@@ -123,25 +123,28 @@ function fightNode(opts: { elite?: boolean; corrupted?: boolean } = {}) {
   const dest = destDef();
   const exp = G.expedition!;
   const node = currentNode()!;
-  let enemyId: string;
+  // a pack of 1-3 enemies (GDD v4 §4.1 / §8.1) — elites and bosses come alone
+  let enemyIds: string[];
   if (opts.elite) {
-    enemyId = node.col === exp.cols - 1 && dest.finaleBoss ? dest.finaleBoss : pick(dest.elites);
+    const boss = node.col === exp.cols - 1 && dest.finaleBoss ? dest.finaleBoss : pick(dest.elites);
+    enemyIds = [boss];
   } else if (opts.corrupted || isNight()) {
-    enemyId = pick(dest.nightEnemies);
+    const count = 1 + rand(2); // 1-2 in the dark
+    enemyIds = Array.from({ length: count }, () => pick(dest.nightEnemies));
   } else {
-    enemyId = pick(dest.enemies);
+    const count = randRange(1, 3); // day packs put real pressure on the loadout
+    enemyIds = Array.from({ length: count }, () => pick(dest.enemies));
   }
-  startCombat(enemyId, {
+  startCombat(enemyIds, {
     elite: opts.elite,
     onWin: () => {
       node.cleared = true;
       G.screen = 'map';
       ageConsumables(); // food ages by battles fought
-      const enemy = ENEMIES[enemyId];
       const drops: string[] = [];
       let title: string;
       if (opts.elite) {
-        exp.heat += dest.finaleBoss === enemyId ? 2 : 1;
+        exp.heat += dest.finaleBoss === enemyIds[0] ? 2 : 1;
         drops.push(dest.eliteReward);
         title = 'Its hoard is yours — if you can carry it.';
       } else if (opts.corrupted) {
@@ -151,8 +154,12 @@ function fightNode(opts: { elite?: boolean; corrupted?: boolean } = {}) {
         drops.push(weightedPick(dest.lootTable).itemId);
         title = 'Spoils of the fight.';
       }
-      if (enemy.drop && Math.random() < enemy.drop.chance) drops.push(enemy.drop.itemId);
-      if (enemy.essence && !opts.corrupted) drops.push('essence_vial');
+      // each enemy in the pack rolls its own bonus drop
+      for (const eid of enemyIds) {
+        const enemy = ENEMIES[eid];
+        if (enemy.drop && Math.random() < enemy.drop.chance) drops.push(enemy.drop.itemId);
+        if (enemy.essence && !opts.corrupted) drops.push('essence_vial');
+      }
       openOffer(title, drops);
       maybeNightfall();
     },

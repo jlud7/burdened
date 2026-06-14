@@ -17,7 +17,7 @@ export function startRaid(heat: number) {
   ids.push(heat >= 4 ? RAID_BOSS : pick(RAID_POOL));
   raidMeta = { totalWaves: ids.length, heat };
   const first = ids.shift()!;
-  startCombat(first, {
+  startCombat([first], {
     raid: true,
     waves: ids,
     onWin: () => raidWon(heat),

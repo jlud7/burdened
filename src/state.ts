@@ -319,8 +319,8 @@ export function hasDog(): boolean {
 
 let cardUid = 1;
 
-function pushCard(deck: CombatCard[], defId: string, sourceUid?: number) {
-  deck.push({ uid: cardUid++, defId, sourceUid });
+function pushCard(deck: CombatCard[], defId: string, sourceUid?: number, companion?: boolean) {
+  deck.push({ uid: cardUid++, defId, sourceUid, companion });
 }
 
 /**
@@ -340,13 +340,16 @@ export function buildDeck(forRaid = false): CombatCard[] {
     for (const cid of def.cards ?? []) pushCard(deck, cid, inst.uid);
   }
   // the dog defends the road and the village alike
-  if (hasDog()) {
-    for (const cid of DOG_CARDS[G.kennelLevel] ?? DOG_CARDS[1]) pushCard(deck, cid);
-  }
   const exp = G.expedition;
+  // the companion unit is the sidekick if hired, else the dog; tag its cards so they
+  // leave the deck if it's incapacitated mid-fight (GDD v4 §4.3)
+  const primaryIsSidekick = !forRaid && !!exp?.sidekickId;
+  if (hasDog()) {
+    for (const cid of DOG_CARDS[G.kennelLevel] ?? DOG_CARDS[1]) pushCard(deck, cid, undefined, !primaryIsSidekick);
+  }
   if (!forRaid) {
     if (exp?.sidekickId) {
-      for (const cid of SIDEKICKS[exp.sidekickId].cards) pushCard(deck, cid);
+      for (const cid of SIDEKICKS[exp.sidekickId].cards) pushCard(deck, cid, undefined, true);
     }
     if (exp?.mule) {
       for (let j = 0; j < MULE_CURSES; j++) pushCard(deck, 'cower');

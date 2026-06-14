@@ -1,8 +1,8 @@
-import type { CombatCard, CombatState, EnemyMove } from './types';
-import { CARDS, ENEMIES, ITEMS, NIGHT_MULT, WEIGHT_TIERS } from './data';
+import type { CombatCard, CombatState, EnemyInstance, CompanionState, EnemyMove, EnemyStatus } from './types';
+import { CARDS, ENEMIES, ITEMS, NIGHT_MULT, WEIGHT_TIERS, SIDEKICKS, DOG_HP } from './data';
 import {
   G, buildDeck, shuffle, rand, destroyItem, perish, isNight,
-  carriedBadge, healPlayer, consume, requiredBurdens,
+  carriedBadge, healPlayer, consume, requiredBurdens, hasDog,
 } from './state';
 import { rerender } from './router';
 import { floatText, shake, flash, screenShake } from './fx';
@@ -21,31 +21,53 @@ export interface CombatOpts {
   elite?: boolean;
 }
 
-function initEnemy(c: CombatState, enemyId: string, night: boolean) {
+/** how often an enemy aims at the companion instead of the Boy, when one is alive (GDD v4 §4.1) */
+const COMPANION_TARGET_CHANCE = 0.35;
+
+function makeEnemy(enemyId: string, night: boolean): EnemyInstance {
   const def = ENEMIES[enemyId];
   const hp = Math.round(def.hp * (night ? NIGHT_MULT : 1));
   const firstAtk = def.pattern.find((m) => m.attack)?.attack ?? 0;
-  c.enemyId = enemyId;
-  c.enemyHp = hp;
-  c.enemyMaxHp = hp;
-  c.enemyBlock = 0;
-  c.patternIdx = 0;
-  c.enemyAtkBonus = night ? Math.round(firstAtk * (NIGHT_MULT - 1)) : 0;
-  c.enemyStatuses = {};
+  return {
+    enemyId,
+    hp,
+    maxHp: hp,
+    block: 0,
+    patternIdx: 0,
+    atkBonus: night ? Math.round(firstAtk * (NIGHT_MULT - 1)) : 0,
+    statuses: {},
+    targetCompanion: false,
+  };
 }
 
-export function startCombat(enemyId: string, opts: CombatOpts) {
+/** the sidekick (if hired) or the dog fights as a unit with HP (GDD v4 §4.3) */
+function buildCompanion(raid: boolean): CompanionState | null {
+  if (raid) return null;
+  const exp = G.expedition;
+  if (exp?.sidekickId) {
+    const s = SIDEKICKS[exp.sidekickId];
+    return { id: s.id, name: s.name, art: s.art, hp: s.hp, maxHp: s.hp, alive: true };
+  }
+  if (hasDog()) {
+    return { id: 'dog', name: 'The Dog', art: 'side_hound', hp: DOG_HP, maxHp: DOG_HP, alive: true };
+  }
+  return null;
+}
+
+/** (re)pick each enemy's target for the upcoming turn so the shown intent matches resolution */
+function rollTargets(c: CombatState) {
+  const canHit = !!c.companion?.alive;
+  for (const e of c.enemies) e.targetCompanion = canHit && e.hp > 0 && Math.random() < COMPANION_TARGET_CHANCE;
+}
+
+export function startCombat(enemyIds: string[], opts: CombatOpts) {
   const night = !opts.raid && isNight();
   onWin = opts.onWin;
   onLose = opts.onLose ?? null;
   const c: CombatState = {
-    enemyId,
-    enemyHp: 0,
-    enemyMaxHp: 0,
-    enemyBlock: 0,
-    patternIdx: 0,
-    enemyAtkBonus: 0,
-    enemyStatuses: {},
+    enemies: enemyIds.map((id) => makeEnemy(id, night)),
+    focus: 0,
+    companion: buildCompanion(!!opts.raid),
     playerStatuses: {},
     draw: shuffle(buildDeck(opts.raid)),
     hand: [],
@@ -60,21 +82,51 @@ export function startCombat(enemyId: string, opts: CombatOpts) {
     raid: opts.raid,
     over: false,
   };
-  initEnemy(c, enemyId, night);
+  rollTargets(c);
   G.combat = c;
   drawCards(5);
   G.screen = 'combat';
 }
 
-export function intent(): { move: EnemyMove; attack: number } {
+// ---------- enemies & targeting ----------
+
+export function livingEnemyIdxs(): number[] {
   const c = G.combat!;
-  const def = ENEMIES[c.enemyId];
-  const move = def.pattern[c.patternIdx % def.pattern.length];
+  return c.enemies.map((_, i) => i).filter((i) => c.enemies[i].hp > 0);
+}
+
+function ensureFocusAlive() {
+  const c = G.combat!;
+  if ((c.enemies[c.focus]?.hp ?? 0) > 0) return;
+  const alive = livingEnemyIdxs();
+  if (alive.length) c.focus = alive[0];
+}
+
+/** click an enemy to aim your single-target cards at it */
+export function setFocus(i: number) {
+  const c = G.combat;
+  if (!c || c.over) return;
+  if ((c.enemies[i]?.hp ?? 0) > 0) { c.focus = i; rerender(); }
+}
+
+export function intent(i: number): { move: EnemyMove; attack: number } {
+  const c = G.combat!;
+  const e = c.enemies[i];
+  const def = ENEMIES[e.enemyId];
+  const move = def.pattern[e.patternIdx % def.pattern.length];
   const attack = move.attack
-    ? Math.max(0, move.attack + c.enemyAtkBonus - (c.enemyStatuses.weak ?? 0))
+    ? Math.max(0, move.attack + e.atkBonus - (e.statuses.weak ?? 0))
     : 0;
   return { move, attack };
 }
+
+const enemyEl = (i: number) => document.getElementById('enemy-box-' + i);
+
+function allDead(): boolean {
+  return G.combat!.enemies.every((e) => e.hp <= 0);
+}
+
+// ---------- card resolution ----------
 
 function drawCards(n: number) {
   const c = G.combat!;
@@ -108,33 +160,38 @@ function gainBlock(n: number) {
   floatText(document.getElementById('player-box'), `+${amt} block${eaten ? ' (corroded)' : ''}`, 'ft-block');
 }
 
-function dealDamage(dmg: number) {
+function dealDamageTo(i: number, dmg: number) {
   const c = G.combat!;
-  const blocked = Math.min(c.enemyBlock, dmg);
-  c.enemyBlock -= blocked;
+  const e = c.enemies[i];
+  if (!e || e.hp <= 0) return;
+  const blocked = Math.min(e.block, dmg);
+  e.block -= blocked;
   const through = dmg - blocked;
-  c.enemyHp = Math.max(0, c.enemyHp - through);
-  const enemyEl = document.getElementById('enemy-box');
-  shake(enemyEl, through >= 9);
-  flash(enemyEl);
-  floatText(enemyEl, through > 0 ? `-${through}` : 'blocked', through > 0 ? 'ft-dmg' : 'ft-block');
+  e.hp = Math.max(0, e.hp - through);
+  const el = enemyEl(i);
+  shake(el, through >= 9);
+  flash(el);
+  floatText(el, through > 0 ? `-${through}` : 'blocked', through > 0 ? 'ft-dmg' : 'ft-block');
 }
 
-function addEnemyStatus(s: 'burn' | 'poison' | 'bleed' | 'blind' | 'weak', n: number) {
+function addEnemyStatus(i: number, s: EnemyStatus, n: number) {
   const c = G.combat!;
-  c.enemyStatuses[s] = (c.enemyStatuses[s] ?? 0) + n;
-  floatText(document.getElementById('enemy-box'), `+${n} ${s}`, 'ft-status');
+  const e = c.enemies[i];
+  if (!e || e.hp <= 0) return;
+  e.statuses[s] = (e.statuses[s] ?? 0) + n;
+  floatText(enemyEl(i), `+${n} ${s}`, 'ft-status');
 }
 
 function checkWin(): boolean {
   const c = G.combat!;
-  if (c.enemyHp > 0) return false;
+  if (!allDead()) return false;
   if (c.waves && c.waves.length) {
     const next = c.waves.shift()!;
-    floatText(document.getElementById('enemy-box'), 'another wave!', 'ft-dmg');
+    floatText(document.getElementById('enemy-box-0'), 'another wave!', 'ft-dmg');
     setTimeout(() => {
       // fresh enemy, fresh footing: hand recycles, energy and block reset
-      initEnemy(c, next, false);
+      c.enemies = [makeEnemy(next, false)];
+      c.focus = 0;
       c.playerStatuses = {};
       c.playerBlock = 0;
       c.energy = c.maxEnergy;
@@ -142,6 +199,7 @@ function checkWin(): boolean {
       c.turn = 1;
       c.discard.push(...c.hand.filter((h) => !CARDS[h.defId].retain));
       c.hand = c.hand.filter((h) => CARDS[h.defId].retain);
+      rollTargets(c);
       drawCards(5 - c.hand.length);
       rerender();
     }, 700);
@@ -181,6 +239,9 @@ export function playCard(uid: number) {
     return;
   }
 
+  ensureFocusAlive();
+  const target = c.focus;
+
   c.energy -= def.cost;
   c.hand.splice(idx, 1);
 
@@ -203,10 +264,10 @@ export function playCard(uid: number) {
       const badge = carriedBadge();
       if (badge && ITEMS[badge.itemId].badge?.arrowCrit && c.arrows % 3 === 0) {
         dmg *= 2;
-        floatText(document.getElementById('enemy-box'), 'CRIT!', 'ft-crit');
+        floatText(enemyEl(target), 'CRIT!', 'ft-crit');
       }
     }
-    dealDamage(dmg);
+    dealDamageTo(target, dmg);
   }
   if (def.block) gainBlock(def.block);
   if (def.heal) {
@@ -214,11 +275,11 @@ export function playCard(uid: number) {
     floatText(document.getElementById('player-box'), `+${healed} hp`, 'ft-heal');
   }
   if (def.gainEnergy) c.energy += def.gainEnergy;
-  if (def.weaken) c.enemyStatuses.weak = (c.enemyStatuses.weak ?? 0) + def.weaken;
-  if (def.burn) addEnemyStatus('burn', def.burn);
-  if (def.poison) addEnemyStatus('poison', def.poison);
-  if (def.bleed) addEnemyStatus('bleed', def.bleed);
-  if (def.blind) addEnemyStatus('blind', def.blind);
+  if (def.weaken) addEnemyStatus(target, 'weak', def.weaken);
+  if (def.burn) addEnemyStatus(target, 'burn', def.burn);
+  if (def.poison) addEnemyStatus(target, 'poison', def.poison);
+  if (def.bleed) addEnemyStatus(target, 'bleed', def.bleed);
+  if (def.blind) addEnemyStatus(target, 'blind', def.blind);
   if (def.draw) drawCards(def.draw);
 
   if (def.breaksItem) {
@@ -229,64 +290,105 @@ export function playCard(uid: number) {
   rerender();
 }
 
+// ---------- the enemy turn ----------
+
+function hitCompanion(c: CombatState, dmg: number) {
+  if (!c.companion || !c.companion.alive) return;
+  c.companion.hp = Math.max(0, c.companion.hp - dmg);
+  screenShake();
+  floatText(document.getElementById('companion-box'), `-${dmg}`, 'ft-dmg');
+  if (c.companion.hp <= 0) incapacitate(c);
+}
+
+/** the companion falls: its cards leave the deck and it can't be targeted again */
+function incapacitate(c: CombatState) {
+  if (!c.companion) return;
+  c.companion.alive = false;
+  c.companion.hp = 0;
+  const strip = (pile: CombatCard[]) => pile.filter((p) => !p.companion);
+  c.draw = strip(c.draw);
+  c.hand = strip(c.hand);
+  c.discard = strip(c.discard);
+  floatText(document.getElementById('companion-box'), 'incapacitated!', 'ft-junk');
+  // TODO (GDD v4 §4.3): also lose loot stored in the companion's own grid (mule/jar).
+}
+
+function hitPlayer(c: CombatState, attack: number) {
+  const blocked = Math.min(c.playerBlock, attack);
+  c.playerBlock -= blocked;
+  const through = attack - blocked;
+  G.hp = Math.max(0, G.hp - through);
+  if (through > 0) {
+    screenShake();
+    floatText(document.getElementById('player-box'), `-${through}`, 'ft-dmg');
+  } else {
+    floatText(document.getElementById('player-box'), 'blocked!', 'ft-block');
+  }
+}
+
 export function endTurn() {
   const c = G.combat!;
   if (c.over) return;
 
-  // damage-over-time bites as the enemy stirs
-  const dot = (c.enemyStatuses.burn ?? 0) + (c.enemyStatuses.poison ?? 0);
-  if (dot > 0) {
-    dealDamage(dot);
-    if (c.enemyStatuses.burn) c.enemyStatuses.burn--;
-    if (c.enemyStatuses.poison) c.enemyStatuses.poison--;
-    if (checkWin()) { rerender(); return; }
-  }
-
-  // enemy acts
-  const { move, attack } = intent();
-  if (move.attack) {
-    // bleeding enemies tear the wound open by moving
-    const bleed = c.enemyStatuses.bleed ?? 0;
-    if (bleed > 0) {
-      dealDamage(bleed);
-      c.enemyStatuses.bleed = bleed - 1;
-      if (checkWin()) { rerender(); return; }
+  // damage-over-time bites every poisoned/burning enemy as the turn turns over
+  for (let i = 0; i < c.enemies.length; i++) {
+    const e = c.enemies[i];
+    if (e.hp <= 0) continue;
+    const dot = (e.statuses.burn ?? 0) + (e.statuses.poison ?? 0);
+    if (dot > 0) {
+      dealDamageTo(i, dot);
+      if (e.statuses.burn) e.statuses.burn--;
+      if (e.statuses.poison) e.statuses.poison--;
     }
-    if ((c.enemyStatuses.blind ?? 0) > 0) {
-      c.enemyStatuses.blind!--;
-      floatText(document.getElementById('enemy-box'), 'it strikes blindly — and misses!', 'ft-block');
-    } else {
-      const hits = move.hits ?? 1;
-      for (let h = 0; h < hits; h++) {
-        const blocked = Math.min(c.playerBlock, attack);
-        c.playerBlock -= blocked;
-        const through = attack - blocked;
-        G.hp = Math.max(0, G.hp - through);
-        if (through > 0) {
-          screenShake();
-          floatText(document.getElementById('player-box'), `-${through}`, 'ft-dmg');
-        } else {
-          floatText(document.getElementById('player-box'), 'blocked!', 'ft-block');
+  }
+  if (checkWin()) { rerender(); return; }
+
+  // each living enemy acts in order, at the Boy or the companion
+  for (let i = 0; i < c.enemies.length; i++) {
+    const e = c.enemies[i];
+    if (e.hp <= 0) continue;
+    const { move, attack } = intent(i);
+
+    if (move.attack) {
+      // bleeding enemies tear the wound open by moving
+      const bleed = e.statuses.bleed ?? 0;
+      if (bleed > 0) {
+        dealDamageTo(i, bleed);
+        e.statuses.bleed = bleed - 1;
+      }
+      if (e.hp <= 0) {
+        // it bled out before it could swing
+      } else if ((e.statuses.blind ?? 0) > 0) {
+        e.statuses.blind!--;
+        floatText(enemyEl(i), 'it strikes blindly — and misses!', 'ft-block');
+      } else {
+        const hits = move.hits ?? 1;
+        const toCompanion = e.targetCompanion && !!c.companion?.alive;
+        for (let h = 0; h < hits; h++) {
+          if (toCompanion && c.companion?.alive) hitCompanion(c, attack);
+          else hitPlayer(c, attack);
         }
       }
     }
-  }
-  if (move.block) c.enemyBlock += move.block;
-  if (move.status) {
-    c.playerStatuses[move.status] = (c.playerStatuses[move.status] ?? 0) + (move.sValue ?? 1);
-    floatText(document.getElementById('player-box'), `${move.name}: ${move.status}!`, 'ft-status');
-  }
-  c.enemyStatuses.weak = 0;
-  c.patternIdx++;
+    if (move.block) e.block += move.block;
+    if (move.status) {
+      c.playerStatuses[move.status] = (c.playerStatuses[move.status] ?? 0) + (move.sValue ?? 1);
+      floatText(document.getElementById('player-box'), `${move.name}: ${move.status}!`, 'ft-status');
+    }
+    e.statuses.weak = 0;
+    e.patternIdx++;
 
-  if (G.hp <= 0) {
-    if (onLose) onLose();
-    else perish();
-    rerender();
-    return;
+    if (G.hp <= 0) {
+      if (onLose) onLose();
+      else perish();
+      rerender();
+      return;
+    }
   }
+  if (checkWin()) { rerender(); return; } // a bleed tick may have finished the last one
 
   // new player turn
+  rollTargets(c);
   c.playerBlock = 0;
   c.exhausted = false;
   const sleep = c.playerStatuses.sleep ?? 0;
@@ -308,6 +410,7 @@ export function endTurn() {
   }
   if (c.playerStatuses.corrosion) c.playerStatuses.corrosion--;
   drawCards(Math.max(0, draws));
+  ensureFocusAlive();
   rerender();
 }
 
@@ -355,8 +458,9 @@ export function combatConsume(uid: number) {
   if (res.gainEnergy) c.energy += res.gainEnergy;
   if (res.block) gainBlock(res.block);
   if (res.thrownPoison) {
-    addEnemyStatus('poison', res.thrownPoison);
-    shake(document.getElementById('enemy-box'));
+    ensureFocusAlive();
+    addEnemyStatus(c.focus, 'poison', res.thrownPoison);
+    shake(enemyEl(c.focus));
   }
   if (res.transformedTo) {
     // the bone lands in your pack — and its card in your discard pile

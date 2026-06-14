@@ -173,9 +173,9 @@ export const ENEMIES: Record<string, EnemyDef> = {
 };
 
 export const SIDEKICKS: Record<string, SidekickDef> = {
-  cleric: { id: 'cleric', name: 'Cleric', cost: 12, desc: '2× Minor Heal, 1× Smite', art: 'side_cleric', cards: ['minor_heal', 'minor_heal', 'smite'] },
-  soldier: { id: 'soldier', name: 'Soldier', cost: 10, desc: '2× Brace, 1× Shield Bash', art: 'side_soldier', cards: ['brace', 'brace', 'shield_bash'] },
-  hound: { id: 'hound', name: 'Hound', cost: 8, desc: '2× Bite, 1× Fetch', art: 'side_hound', cards: ['bite', 'bite', 'fetch'] },
+  cleric: { id: 'cleric', name: 'Cleric', cost: 12, hp: 16, desc: '2× Minor Heal, 1× Smite', art: 'side_cleric', cards: ['minor_heal', 'minor_heal', 'smite'] },
+  soldier: { id: 'soldier', name: 'Soldier', cost: 10, hp: 24, desc: '2× Brace, 1× Shield Bash', art: 'side_soldier', cards: ['brace', 'brace', 'shield_bash'] },
+  hound: { id: 'hound', name: 'Hound', cost: 8, hp: 14, desc: '2× Bite, 1× Fetch', art: 'side_hound', cards: ['bite', 'bite', 'fetch'] },
 };
 
 /** the kennel dog's cards by training level */
@@ -184,6 +184,8 @@ export const DOG_CARDS: Record<number, string[]> = {
   2: ['savage_bite', 'savage_bite', 'fetch'],
 };
 export const KENNEL_UPGRADE_ESSENCE = 6;
+/** the Kennel dog's HP when it fights as a unit (GDD v4 §7) */
+export const DOG_HP = 18;
 
 export const MULE_COST = 6;
 export const MULE_CURSES = 2; // Cower in Fear cards while hired

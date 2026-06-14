@@ -1,6 +1,6 @@
-import { ENEMIES, SIDEKICKS, DESTINATIONS, ITEMS, CARDS } from '../data';
-import { G, hasDog, stageOf, displayName, carriedWeight, weightCapacity } from '../state';
-import { playCard, endTurn, intent, combatConsume, combatDrop } from '../combat';
+import { ENEMIES, DESTINATIONS, ITEMS, CARDS } from '../data';
+import { G, stageOf, displayName, carriedWeight, weightCapacity } from '../state';
+import { playCard, endTurn, intent, setFocus, livingEnemyIdxs, combatConsume, combatDrop } from '../combat';
 import { raidMeta } from '../raid';
 import { action, renderCard, hpBar, renderDeckList, statusChips, weightBar, itemChips } from '../ui';
 import { art } from '../art';
@@ -15,6 +15,7 @@ let pendingUidC: number | null = null;
 
 action('c-play', (arg) => playCard(Number(arg)));
 action('c-end-turn', () => endTurn());
+action('c-target', (arg) => setFocus(Number(arg)));
 action('c-pile', (arg) => {
   pileOpen = pileOpen === arg ? null : (arg as 'draw' | 'discard');
   rerender();
@@ -43,7 +44,15 @@ document.addEventListener('keydown', (e) => {
     if (pileOpen) { pileOpen = null; rerender(); return; }
   }
   if (c.over) return;
-  if (e.key >= '1' && e.key <= '9') {
+  if (e.key === 'Tab') {
+    // cycle the targeted enemy
+    e.preventDefault();
+    const alive = livingEnemyIdxs();
+    if (alive.length) {
+      const at = alive.indexOf(c.focus);
+      setFocus(alive[(at + 1) % alive.length]);
+    }
+  } else if (e.key >= '1' && e.key <= '9') {
     const card = c.hand[Number(e.key) - 1];
     if (card) playCard(card.uid);
   } else if (e.key === 'e' || e.key === 'E') {
@@ -56,6 +65,40 @@ function burdenDesc(card: CombatCard): string | undefined {
   const def = CARDS[card.defId];
   if (def.type !== 'burden') return undefined;
   return `${def.desc} (⚖ ${carriedWeight()}/${weightCapacity()} — lighten the pack to shed this.)`;
+}
+
+/** the intent pill for enemy i, including who it's aimed at */
+function intentHtml(i: number): string {
+  const c = G.combat!;
+  const e = c.enemies[i];
+  const { move, attack } = intent(i);
+  const blind = (e.statuses.blind ?? 0) > 0;
+  const aimComp = e.targetCompanion && !!c.companion?.alive;
+  const aim = aimComp ? `<span class="intent-aim" title="aimed at your companion">↣ ${c.companion!.name}</span>` : '';
+  const pill = move.attack
+    ? `<div class="intent intent-attack" title="${move.name}${move.hits ? `, ${move.hits} hits` : ''}${blind ? ' — blinded, it will miss' : ''}">
+        ⚔ ${blind ? '<s>' : ''}${attack}${(move.hits ?? 1) > 1 ? `×${move.hits}` : ''}${blind ? '</s>' : ''} <small>${move.name}</small></div>`
+    : move.block
+      ? `<div class="intent intent-block" title="${move.name}">🛡 ${move.block} <small>${move.name}</small></div>`
+      : `<div class="intent intent-debuff" title="${move.name} — it's readying something foul">✷ <small>${move.name}</small></div>`;
+  return pill + aim;
+}
+
+/** one enemy combatant box (click to target) */
+function enemyBox(i: number): string {
+  const c = G.combat!;
+  const e = c.enemies[i];
+  const enemy = ENEMIES[e.enemyId];
+  const dead = e.hp <= 0;
+  const focused = i === c.focus && !dead;
+  const tap = dead ? '' : `data-action="c-target" data-arg="${i}"`;
+  return `<div class="combatant enemy${focused ? ' focused' : ''}${dead ? ' enemy-dead' : ''}" id="enemy-box-${i}" ${tap}>
+    ${dead ? '' : intentHtml(i)}
+    ${hpBar(e.hp, e.maxHp, e.block)}
+    ${statusChips(e.statuses)}
+    ${art(enemy.art, 'art-xl')}
+    <div class="combatant-label">${enemy.name}</div>
+  </div>`;
 }
 
 /** in-combat pack strip: eat, throw, or abandon things to shed weight NOW */
@@ -90,19 +133,9 @@ function combatPack(): string {
 
 export function renderCombat(root: HTMLElement) {
   const c = G.combat!;
-  const enemy = ENEMIES[c.enemyId];
   const exp = G.expedition;
   const dest = exp ? DESTINATIONS[exp.destId] : null;
-  const { move, attack } = intent();
-  const side = exp?.sidekickId ? SIDEKICKS[exp.sidekickId] : null;
-
-  const blind = (c.enemyStatuses.blind ?? 0) > 0;
-  const intentHtml = move.attack
-    ? `<div class="intent intent-attack" title="${move.name}${move.hits ? `, ${move.hits} hits` : ''}${blind ? ' — blinded, it will miss' : ''}">
-        ⚔ ${blind ? '<s>' : ''}${attack}${(move.hits ?? 1) > 1 ? `×${move.hits}` : ''}${blind ? '</s>' : ''} <small>${move.name}</small></div>`
-    : move.block
-      ? `<div class="intent intent-block" title="${move.name}">🛡 ${move.block} <small>${move.name}</small></div>`
-      : `<div class="intent intent-debuff" title="${move.name} — it's readying something foul">✷ <small>${move.name}</small></div>`;
+  const comp = c.companion;
 
   // fanned hand, per the concept battle layout: tilted, overlapping, arced
   const n = c.hand.length;
@@ -120,6 +153,14 @@ export function renderCombat(root: HTMLElement) {
 
   const bg = c.raid ? 'scene_raid' : dest?.art ?? 'dest_woods';
 
+  const companionBox = comp
+    ? `<div class="combatant companion-box${comp.alive ? '' : ' down'}" id="companion-box">
+        ${hpBar(comp.hp, comp.maxHp)}
+        ${art(comp.art, 'art-xl')}
+        <div class="combatant-label">${comp.name}${comp.alive ? '' : ' — down'}</div>
+      </div>`
+    : '';
+
   root.innerHTML = `
     <header class="topbar">
       <h1>${c.raid ? 'The Village Gate' : dest?.name ?? 'Combat'}</h1>
@@ -134,23 +175,20 @@ export function renderCombat(root: HTMLElement) {
     <main class="combat-main">
       <div class="battlefield">
         <img class="battle-bg" src="art/${bg}.png" alt="" onerror="this.remove()"/>
-        <div class="combatant" id="player-box">
-          ${hpBar(G.hp, G.maxHp, c.playerBlock)}
-          ${statusChips(c.playerStatuses)}
-          <div class="duo">
-            ${exp?.mule ? `<span class="mule-back" title="Pack Mule (cowering)">${art('mule', 'art-md')}</span>` : ''}
-            ${art('hero', 'art-xl')}
-            ${hasDog() ? `<span class="companion" title="Your dog">${art('side_hound', 'art-md')}</span>` : ''}
-            ${side ? `<span class="companion" title="${side.name}">${art(side.art, 'art-md')}</span>` : ''}
+        <div class="party">
+          <div class="combatant" id="player-box">
+            ${hpBar(G.hp, G.maxHp, c.playerBlock)}
+            ${statusChips(c.playerStatuses)}
+            <div class="duo">
+              ${exp?.mule ? `<span class="mule-back" title="Pack Mule (cowering)">${art('mule', 'art-md')}</span>` : ''}
+              ${art('hero', 'art-xl')}
+            </div>
+            <div class="combatant-label">You</div>
           </div>
-          <div class="combatant-label">You${hasDog() ? ' &amp; the dog' : ''}${side ? ` &amp; ${side.name}` : ''}</div>
+          ${companionBox}
         </div>
-        <div class="combatant ${c.over ? 'enemy-dead' : ''}" id="enemy-box">
-          ${intentHtml}
-          ${hpBar(c.enemyHp, c.enemyMaxHp, c.enemyBlock)}
-          ${statusChips(c.enemyStatuses)}
-          ${art(enemy.art, 'art-xl')}
-          <div class="combatant-label">${enemy.name}</div>
+        <div class="enemies">
+          ${c.enemies.map((_, i) => enemyBox(i)).join('')}
         </div>
       </div>
       ${c.over ? `<div class="victory">${c.raid ? 'The village holds!' : 'Victory!'}</div>` : ''}
@@ -162,7 +200,7 @@ export function renderCombat(root: HTMLElement) {
           <button class="pile-btn" data-action="c-pile" data-arg="draw" title="Draw pile">⬒ ${c.draw.length}</button>
           <button class="pile-btn" data-action="c-pile" data-arg="discard" title="Discard pile">⬓ ${c.discard.length}</button>
           <button class="btn" data-action="c-end-turn" ${c.over ? 'disabled' : ''}>End Turn</button>
-          <span class="kbd-hint">1–9 play · E end turn</span>
+          <span class="kbd-hint">1–9 play · Tab target · E end turn</span>
         </div>
       </div>
       ${packOpenC && !c.raid ? combatPack() : ''}

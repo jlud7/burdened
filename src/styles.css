@@ -270,6 +270,19 @@ body.phase-night .combatant-label, body.phase-night .battlefield .block-chip { c
 .companion .art-md, .mule-back .art-md { filter: drop-shadow(0 7px 5px #00000038); }
 .mule-back { opacity: 0.8; margin-right: -10px; }
 
+/* GDD v4 §4: multi-enemy battlefield, target focus, and the companion as a unit */
+.party { display: flex; align-items: flex-end; gap: 12px; }
+.party .combatant { width: 200px; }
+.companion-box { width: 150px; }
+.companion-box.down { opacity: 0.45; filter: grayscale(0.85); }
+.companion-box.down .art-xl { transform: rotate(75deg) translateY(12px); transition: transform 0.5s ease; }
+.enemies { display: flex; align-items: flex-end; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.enemies .combatant { width: 150px; cursor: pointer; transition: transform 0.12s ease; }
+.enemies .combatant:not(.enemy-dead):hover { transform: translateY(-4px); }
+.enemies .combatant.focused { outline: 3px solid var(--gold); outline-offset: 5px; border-radius: 10px; }
+.intent-aim { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: bold; color: #8a3b2f; }
+body.phase-night .intent-aim { color: #e0a98f; }
+
 .intent {
   display: inline-block; margin-bottom: 4px;
   padding: 3px 12px; border-radius: 20px; font-weight: bold; font-size: 15px;
