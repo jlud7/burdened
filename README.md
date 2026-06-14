@@ -4,7 +4,7 @@
 
 Your gear **is** your deck — arrange items in a grid-based pack and every sword, shield and runestone adds its cards to your draw pile. But so does your greed: every item has a **weight**, and as your pack fills past 50/75/100% capacity, debilitating **Burden** cards flood your deck — and vanish the instant you drop or eat enough to dip back under. Get in, get loot, and carry it home through the **night** that falls when you turn back, while the road corrupts behind you.
 
-Full concept: [docs/gdd-v3.md](docs/gdd-v3.md) (the current design authority) · earlier passes: [gdd-v2](docs/gdd-v2.md), [design-doc](docs/design-doc.md)
+Full concept: [docs/gdd-v4.md](docs/gdd-v4.md) (the current design authority) · earlier passes: [gdd-v3](docs/gdd-v3.md), [gdd-v2](docs/gdd-v2.md), [design-doc](docs/design-doc.md)
 
 ## Play it
 
